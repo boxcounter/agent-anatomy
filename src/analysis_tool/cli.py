@@ -1,4 +1,6 @@
 import json
+import signal
+import threading
 from pathlib import Path
 
 import click
@@ -97,6 +99,40 @@ def analyze(session_dir: str) -> None:
     click.echo(f"\nReport written to {report_file}")
 
     click.echo("\nDone.")
+
+
+@main.command()
+@click.option("--team-name", required=True, help="Team name (same as session ID)")
+@click.option("--output", "output_dir", default=None, help="Output directory for analysis data")
+def watch(team_name: str, output_dir: str | None) -> None:
+    """Monitor Agent Team communication files in real-time.
+
+    Runs until interrupted (Ctrl+C). Outputs team-events.jsonl.
+    """
+    from pathlib import Path
+
+    from analysis_tool.watch import watch_teams
+
+    if output_dir is None:
+        output_path = Path.home() / ".claude" / "agent-team-analysis" / team_name
+    else:
+        output_path = Path(output_dir)
+
+    stop_event = threading.Event()
+
+    def _handle_signal(signum: int, frame: object) -> None:
+        click.echo("\nStopping watcher...")
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
+    click.echo(f"Watching team '{team_name}'... (Ctrl+C to stop)")
+    click.echo(f"Output: {output_path / 'raw' / 'team-events.jsonl'}")
+
+    watch_teams(team_name, output_path, stop_event)
+
+    click.echo(f"Done. Events written to {output_path / 'raw' / 'team-events.jsonl'}")
 
 
 def _make_summary(events: list[UnifiedEvent]) -> str:
