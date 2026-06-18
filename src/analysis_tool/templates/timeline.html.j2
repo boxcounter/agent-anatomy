@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Team Timeline</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 20px; }
+  .agent-label { font-size: 12px; font-weight: 600; }
+  .event-dot { cursor: pointer; }
+  .event-dot:hover { stroke: #000; stroke-width: 2px; }
+  .tooltip {
+    position: absolute; background: #333; color: #fff; padding: 6px 10px;
+    border-radius: 4px; font-size: 12px; pointer-events: none; opacity: 0;
+    transition: opacity 0.2s; max-width: 300px;
+  }
+  .axis line, .axis path { stroke: #ccc; }
+  .axis text { font-size: 10px; fill: #666; }
+</style>
+</head>
+<body>
+<h1>Agent Team Timeline</h1>
+<p>{{ event_count }} events across {{ agents|length }} agents ({{ "%.1f"|format(total_seconds) }}s)</p>
+<div id="timeline"></div>
+<div class="tooltip" id="tooltip"></div>
+<script>
+const agents = {{ agents|tojson }};
+const events = {{ events|tojson }};
+
+const margin = { top: 20, right: 40, bottom: 30, left: 120 };
+const rowHeight = 30;
+const width = Math.min(window.innerWidth - margin.left - margin.right - 40, 1200);
+const height = agents.length * rowHeight + margin.top + margin.bottom;
+
+const svg = d3.select("#timeline")
+  .append("svg")
+  .attr("width", width + margin.left + margin.right)
+  .attr("height", height);
+
+const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+g.selectAll(".agent-label")
+  .data(agents)
+  .enter()
+  .append("text")
+  .attr("class", "agent-label")
+  .attr("x", -10)
+  .attr("y", (d, i) => i * rowHeight + rowHeight / 2)
+  .attr("text-anchor", "end")
+  .attr("dominant-baseline", "middle")
+  .text(d => d.label);
+
+const xScale = d3.scaleLinear().domain([0, 100]).range([0, width]);
+const xAxis = d3.axisTop(xScale).ticks(10).tickFormat(d => d + "%");
+g.append("g").attr("class", "axis").call(xAxis);
+
+const colorMap = {
+  agent_spawn: "#4CAF50",
+  agent_complete: "#F44336",
+  message_send: "#2196F3",
+  message_read: "#03A9F4",
+  task_create: "#FF9800",
+  task_update: "#FFC107",
+  agent_message: "#9E9E9E",
+};
+
+g.selectAll(".event-dot")
+  .data(events)
+  .enter()
+  .append("circle")
+  .attr("class", "event-dot")
+  .attr("cx", d => xScale(d.offset_pct))
+  .attr("cy", d => d.agent_row * rowHeight + rowHeight / 2)
+  .attr("r", 5)
+  .attr("fill", d => colorMap[d.type] || "#999")
+  .on("mouseover", (evt, d) => {
+    const tip = d3.select("#tooltip");
+    tip.style("opacity", 1)
+       .style("left", (evt.pageX + 10) + "px")
+       .style("top", (evt.pageY - 20) + "px")
+       .html(`<strong>${d.type}</strong><br>${d.data_summary}<br><small>${d.offset_seconds.toFixed(1)}s</small>`);
+  })
+  .on("mouseout", () => { d3.select("#tooltip").style("opacity", 0); });
+
+const spawnLinks = [];
+events.forEach(e => {
+  if (e.parent_id) {
+    const parent = events.find(p => p.event_id === e.parent_id);
+    if (parent) spawnLinks.push({ source: parent, target: e });
+  }
+});
+
+g.selectAll(".spawn-link")
+  .data(spawnLinks)
+  .enter()
+  .append("line")
+  .attr("class", "spawn-link")
+  .attr("x1", d => xScale(d.source.offset_pct))
+  .attr("y1", d => d.source.agent_row * rowHeight + rowHeight / 2)
+  .attr("x2", d => xScale(d.target.offset_pct))
+  .attr("y2", d => d.target.agent_row * rowHeight + rowHeight / 2)
+  .attr("stroke", "#ccc")
+  .attr("stroke-dasharray", "4,2")
+  .attr("stroke-width", 1);
+
+const legend = svg.append("g").attr("transform", `translate(${margin.left}, ${height + 10})`);
+Object.keys(colorMap).forEach((t, i) => {
+  legend.append("circle").attr("cx", i * 120).attr("cy", 0).attr("r", 5).attr("fill", colorMap[t]);
+  legend.append("text").attr("x", i * 120 + 10).attr("y", 4).attr("font-size", "11px").text(t);
+});
+</script>
+</body>
+</html>
