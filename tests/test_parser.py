@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from analysis_tool.models import EventSource, EventType
-from analysis_tool.parser import parse_jsonl
+from analysis_tool.parser import parse_jsonl, parse_raw_dir
 
 
 def test_parse_session_jsonl_yields_agent_spawn(fixtures_dir: Path):
@@ -26,3 +26,21 @@ def test_parse_subagent_jsonl_yields_agent_message(fixtures_dir: Path):
     assert msg.data["role"] == "assistant"
     assert msg.data["content_summary"] == "I am a sub-agent response"
     assert msg.parent_id is not None
+
+
+def test_parse_raw_dir_links_spawn_to_sidechain(fixtures_dir: Path):
+    events = parse_raw_dir(fixtures_dir)
+
+    spawns = [e for e in events if e.type == EventType.AGENT_SPAWN]
+    assert len(spawns) == 1
+    spawn = spawns[0]
+    # After association, child_agent_id should be populated
+    assert spawn.data["child_agent_id"] != ""
+    assert "agent-a0" in spawn.data["child_agent_id"]
+
+    # Verify sidechain messages exist and reference the spawn
+    sidechain_msgs = [
+        e for e in events
+        if e.type == EventType.AGENT_MESSAGE and e.agent_id == "agent-a0"
+    ]
+    assert len(sidechain_msgs) >= 1

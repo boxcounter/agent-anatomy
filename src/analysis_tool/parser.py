@@ -122,3 +122,146 @@ def _parse_jsonl_entry(entry: dict[str, Any]) -> list[UnifiedEvent]:
         ))
 
     return events
+
+
+def parse_raw_dir(raw_dir: Path) -> list[UnifiedEvent]:
+    """Parse all raw data in a session analysis/raw directory into unified events."""
+    all_events: list[UnifiedEvent] = []
+
+    # 1. Parse main session transcript
+    session_jsonl = raw_dir / "session.jsonl"
+    if session_jsonl.exists():
+        all_events.extend(parse_jsonl(session_jsonl))
+
+    # 2. Parse subagent sidechains
+    subagents_dir = raw_dir / "subagents"
+    if subagents_dir.is_dir():
+        for meta_file in sorted(subagents_dir.glob("*.meta.json")):
+            meta = json.loads(meta_file.read_text())
+            tool_use_id = meta.get("toolUseId", "")
+            # meta file: "agent-a0.meta.json" -> agent_id: "agent-a0"
+            sidechain_stem = meta_file.name.replace(".meta.json", "")
+            agent_id = sidechain_stem
+
+            # Match against existing agent_spawn events and update child_agent_id
+            for event in all_events:
+                if (
+                    event.type == EventType.AGENT_SPAWN
+                    and event.data.get("tool_use_id") == tool_use_id
+                ):
+                    idx = all_events.index(event)
+                    all_events[idx] = UnifiedEvent.create(
+                        timestamp=event.timestamp,
+                        agent_id=event.agent_id,
+                        source=event.source,
+                        type=event.type,
+                        data={**event.data, "child_agent_id": agent_id},
+                        parent_id=event.parent_id,
+                    )
+
+            # Parse the sidechain JSONL
+            sidechain_jsonl = subagents_dir / f"{sidechain_stem}.jsonl"
+            if sidechain_jsonl.exists():
+                sidechain_events = parse_jsonl(sidechain_jsonl)
+                all_events.extend(sidechain_events)
+
+    # 3. Parse team-events if present
+    team_events_file = raw_dir / "team-events.jsonl"
+    if team_events_file.exists():
+        all_events.extend(parse_team_events(team_events_file))
+
+    # Sort by timestamp
+    all_events.sort(key=lambda e: e.timestamp)
+
+    return all_events
+
+
+def parse_team_events(path: Path) -> list[UnifiedEvent]:
+    """Parse team-events.jsonl and diff consecutive snapshots to find message_read events."""
+    events: list[UnifiedEvent] = []
+    snapshots: list[dict[str, Any]] = []
+
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            snapshots.append(json.loads(line))
+
+    for i, snap in enumerate(snapshots):
+        ts = datetime.fromisoformat(snap["timestamp"].replace("Z", "+00:00"))
+
+        if i == 0 and snap.get("kind") == "mailbox_snapshot":
+            raw_content = snap.get("content", [])
+            if isinstance(raw_content, list):
+                content = cast(list[dict[str, Any]], raw_content)
+                for msg in content:
+                    events.append(UnifiedEvent.create(
+                        timestamp=ts,
+                        agent_id=str(Path(snap["path"]).stem),
+                        source=EventSource.TEAM_EVENTS,
+                        type=EventType.MESSAGE_SEND,
+                        data={
+                            "from": msg.get("from", ""),
+                            "to": Path(snap["path"]).stem,
+                            "summary": msg.get("summary", ""),
+                            "message_type": "message",
+                        },
+                    ))
+
+        if i > 0:
+            prev = snapshots[i - 1]
+            if snap.get("kind") == "mailbox_snapshot" and prev.get("kind") == "mailbox_snapshot":
+                raw_prev = prev.get("content", [])
+                raw_curr = snap.get("content", [])
+                if isinstance(raw_prev, list) and isinstance(raw_curr, list):
+                    _diff_mailbox(
+                        cast(list[dict[str, Any]], raw_prev),
+                        cast(list[dict[str, Any]], raw_curr),
+                        ts, snap["path"], events,
+                    )
+
+    return events
+
+
+def _diff_mailbox(
+    prev_content: list[dict[str, Any]],
+    curr_content: list[dict[str, Any]],
+    ts: datetime,
+    path: str,
+    events: list[UnifiedEvent],
+) -> None:
+    """Compare mailbox snapshots to detect new messages and read transitions."""
+    mailbox_owner = Path(path).stem
+
+    if len(curr_content) > len(prev_content):
+        for msg in curr_content[len(prev_content):]:
+            events.append(UnifiedEvent.create(
+                timestamp=ts,
+                agent_id=mailbox_owner,
+                source=EventSource.TEAM_EVENTS,
+                type=EventType.MESSAGE_SEND,
+                data={
+                    "from": msg.get("from", ""),
+                    "to": mailbox_owner,
+                    "summary": msg.get("summary", ""),
+                    "message_type": "message",
+                },
+            ))
+
+    for prev_msg, curr_msg in zip(prev_content, curr_content):
+        if (
+            not prev_msg.get("read", False)
+            and curr_msg.get("read", False)
+        ):
+            events.append(UnifiedEvent.create(
+                timestamp=ts,
+                agent_id=mailbox_owner,
+                source=EventSource.TEAM_EVENTS,
+                type=EventType.MESSAGE_READ,
+                data={
+                    "mailbox_owner": mailbox_owner,
+                    "from_agent": curr_msg.get("from", ""),
+                    "summary": curr_msg.get("summary", ""),
+                },
+            ))
