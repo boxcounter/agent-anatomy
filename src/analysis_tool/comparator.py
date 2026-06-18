@@ -59,7 +59,7 @@ def compare(
     return report
 
 
-def _session_summary(events: list[UnifiedEvent]) -> str:  # pyright: ignore[reportUnusedFunction]
+def session_summary(events: list[UnifiedEvent]) -> str:
     """Generate a Markdown summary of a single session."""
     agent_ids = sorted({e.agent_id for e in events})
     spawns = sum(1 for e in events if e.type == EventType.AGENT_SPAWN)

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from analysis_tool.comparator import ComparisonReport, _session_summary, compare  # pyright: ignore[reportPrivateUsage]
+from analysis_tool.comparator import ComparisonReport, compare, session_summary
 from analysis_tool.models import EventSource, EventType, UnifiedEvent
 
 
@@ -59,6 +59,6 @@ def test_session_summary_is_markdown():
             data={"role": "user", "content_summary": "hello", "token_usage": {}, "tool_calls": []},
         ),
     ]
-    md = _session_summary(events)
+    md = session_summary(events)
     assert isinstance(md, str)
     assert "# " in md

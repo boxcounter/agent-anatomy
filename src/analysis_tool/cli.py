@@ -93,10 +93,19 @@ def analyze(session_dir: str) -> None:
     click.echo(f"  Nodes: {len(graph.nodes)}, Edges: {len(graph.edges)}")
 
     # Generate report
-    summary = _make_summary(events)
+    from analysis_tool.comparator import session_summary
+    summary = session_summary(events)
     report_file = analysis_dir / "report.md"
     report_file.write_text(summary)
     click.echo(f"\nReport written to {report_file}")
+
+    # Generate timeline
+    from analysis_tool.timeline import build_timeline_data, render_html
+    timeline_data = build_timeline_data(events)
+    template_dir = Path(__file__).parent / "templates"
+    timeline_file = analysis_dir / "timeline.html"
+    render_html(timeline_data, template_dir, timeline_file)
+    click.echo(f"Timeline written to {timeline_file}")
 
     click.echo("\nDone.")
 
@@ -133,33 +142,6 @@ def watch(team_name: str, output_dir: str | None) -> None:
     watch_teams(team_name, output_path, stop_event)
 
     click.echo(f"Done. Events written to {output_path / 'raw' / 'team-events.jsonl'}")
-
-
-def _make_summary(events: list[UnifiedEvent]) -> str:
-    """Generate a Markdown summary of a single session."""
-    from analysis_tool.models import EventType
-    agent_ids = sorted({e.agent_id for e in events})
-    spawns = sum(1 for e in events if e.type == EventType.AGENT_SPAWN)
-    msgs = sum(1 for e in events if e.type == EventType.MESSAGE_SEND)
-    tasks = sum(1 for e in events if e.type == EventType.TASK_CREATE)
-
-    lines = [
-        "# Session Analysis Report",
-        "",
-        f"**Agents**: {len(agent_ids)} ({', '.join(agent_ids[:10])})",
-        f"**Agent spawns**: {spawns}",
-        f"**Messages sent**: {msgs}",
-        f"**Tasks created**: {tasks}",
-        f"**Total events**: {len(events)}",
-        "",
-    ]
-
-    if events:
-        duration = (events[-1].timestamp - events[0].timestamp).total_seconds()
-        lines.append(f"**Duration**: {duration:.1f}s")
-        lines.append(f"**Time range**: {events[0].timestamp.isoformat()} -> {events[-1].timestamp.isoformat()}")
-
-    return "\n".join(lines) + "\n"
 
 
 def _event_to_dict(event: UnifiedEvent) -> dict[str, object]:
