@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 
 
-def _find_session_dir(session_id: str) -> Path:
+def find_session_dir(session_id: str) -> Path:
     """Search ~/.claude/projects/ for a session directory."""
     claude_projects = Path.home() / ".claude" / "projects"
     for project_dir in claude_projects.iterdir():
@@ -23,7 +23,7 @@ def collect_session(session_id: str, output_dir: Path) -> Path:
     raw_dir = analysis_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    session_dir = _find_session_dir(session_id)
+    session_dir = find_session_dir(session_id)
 
     # 1. Copy main transcript
     jsonl_file = session_dir / f"{session_id}.jsonl"

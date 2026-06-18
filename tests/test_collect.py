@@ -6,7 +6,7 @@ from analysis_tool.collect import collect_session
 
 
 def _mock_find_session_dir(path: Path):
-    """Create a replacement for _find_session_dir that always returns `path`."""
+    """Create a replacement for find_session_dir that always returns `path`."""
     def _finder(_session_id: str) -> Path:
         return path
     return _finder
@@ -30,9 +30,9 @@ def test_collect_session_copies_session_jsonl(
 
     output_dir = tmp_path / "analysis"
 
-    # Replace _find_session_dir to return our mock
+    # Replace find_session_dir to return our mock
     monkeypatch.setattr(
-        "analysis_tool.collect._find_session_dir",
+        "analysis_tool.collect.find_session_dir",
         _mock_find_session_dir(session_dir),
     )
 
