@@ -42,6 +42,90 @@ def collect(session_id: str, output_dir: str | None) -> None:
     click.echo(f"Parsed {len(events)} events to {events_file}")
 
 
+@main.command()
+@click.option("--session-dir", required=True, help="Path to analysis/ directory")
+def analyze(session_dir: str) -> None:
+    """Analyze a collected session and generate reports."""
+    import json
+
+    analysis_dir = Path(session_dir)
+    raw_dir = analysis_dir / "raw"
+
+    if not raw_dir.is_dir():
+        click.echo(f"Error: raw/ directory not found in {analysis_dir}", err=True)
+        raise SystemExit(1)
+
+    # Parse events
+    events = parse_raw_dir(raw_dir)
+    click.echo(f"Parsed {len(events)} events")
+
+    # Write unified event stream
+    events_file = analysis_dir / "events.jsonl"
+    with open(events_file, "w") as f:
+        for event in events:
+            f.write(json.dumps(_event_to_dict(event), default=str) + "\n")
+
+    # Generate state machine report
+    from analysis_tool.state_machine import build_state_machines, detect_anomalies
+    machines = build_state_machines(events)
+    anomalies = detect_anomalies(machines)
+
+    click.echo(f"\nTask State Machines: {len(machines)} tasks")
+    for task_id, transitions in machines.items():
+        path_str = " -> ".join(t.status for t in transitions)
+        click.echo(f"  {task_id}: {path_str}")
+
+    if anomalies:
+        click.echo(f"\nAnomalies ({len(anomalies)}):")
+        for a in anomalies:
+            click.echo(f"  [{a.kind}] {a.detail}")
+
+    # Generate collaboration graph
+    from analysis_tool.graph import build_collaboration_graph, to_mermaid
+    graph = build_collaboration_graph(events)
+    mermaid = to_mermaid(graph)
+
+    graph_file = analysis_dir / "graph.mermaid"
+    graph_file.write_text(mermaid)
+    click.echo(f"\nCollaboration graph written to {graph_file}")
+    click.echo(f"  Nodes: {len(graph.nodes)}, Edges: {len(graph.edges)}")
+
+    # Generate report
+    summary = _make_summary(events)
+    report_file = analysis_dir / "report.md"
+    report_file.write_text(summary)
+    click.echo(f"\nReport written to {report_file}")
+
+    click.echo("\nDone.")
+
+
+def _make_summary(events: list[UnifiedEvent]) -> str:
+    """Generate a Markdown summary of a single session."""
+    from analysis_tool.models import EventType
+    agent_ids = sorted({e.agent_id for e in events})
+    spawns = sum(1 for e in events if e.type == EventType.AGENT_SPAWN)
+    msgs = sum(1 for e in events if e.type == EventType.MESSAGE_SEND)
+    tasks = sum(1 for e in events if e.type == EventType.TASK_CREATE)
+
+    lines = [
+        "# Session Analysis Report",
+        "",
+        f"**Agents**: {len(agent_ids)} ({', '.join(agent_ids[:10])})",
+        f"**Agent spawns**: {spawns}",
+        f"**Messages sent**: {msgs}",
+        f"**Tasks created**: {tasks}",
+        f"**Total events**: {len(events)}",
+        "",
+    ]
+
+    if events:
+        duration = (events[-1].timestamp - events[0].timestamp).total_seconds()
+        lines.append(f"**Duration**: {duration:.1f}s")
+        lines.append(f"**Time range**: {events[0].timestamp.isoformat()} -> {events[-1].timestamp.isoformat()}")
+
+    return "\n".join(lines) + "\n"
+
+
 def _event_to_dict(event: UnifiedEvent) -> dict[str, object]:
     """Serialize UnifiedEvent to a JSON-safe dict."""
     return {
