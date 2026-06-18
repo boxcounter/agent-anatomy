@@ -1,0 +1,1 @@
+{"parentUuid":null,"isSidechain":false,"agentId":"main","message":{"role":"assistant","content":[{"type":"tool_use","id":"call_00_abc123","name":"Agent","input":{"description":"test task","prompt":"do something"}}]},"uuid":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1","timestamp":"2026-06-18T12:00:00.000Z"}
