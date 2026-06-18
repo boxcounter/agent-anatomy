@@ -9,14 +9,48 @@ from analysis_tool.models import EventSource, EventType, UnifiedEvent
 
 def parse_jsonl(path: Path) -> list[UnifiedEvent]:
     events: list[UnifiedEvent] = []
+    tool_result_task_ids: dict[str, str] = {}  # tool_use_id -> taskId
+
     with open(path) as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
             entry = json.loads(line)
+
+            # Scan tool_result blocks for task IDs (from TaskCreate/TaskUpdate results)
+            message = cast(dict[str, Any], entry.get("message", {}))
+            content = cast(list[dict[str, Any]], message.get("content", []))
+            for block in content:
+                if block.get("type") == "tool_result":
+                    tool_use_id: str = block.get("tool_use_id", "")
+                    result_content = cast(list[dict[str, Any]], block.get("content", []))
+                    for rc in result_content:
+                        if rc.get("type") == "text":
+                            try:
+                                result_data = json.loads(rc.get("text", "{}"))
+                                if "id" in result_data and tool_use_id:
+                                    tool_result_task_ids[tool_use_id] = result_data["id"]
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
             parsed = _parse_jsonl_entry(entry)
             events.extend(parsed)
+
+    # Backfill task_ids from tool_result map
+    for i, event in enumerate(events):
+        if event.type == EventType.TASK_CREATE and event.data.get("task_id") == "":
+            tool_use_id = event.data.get("tool_use_id", "")
+            if tool_use_id in tool_result_task_ids:
+                events[i] = UnifiedEvent.create(
+                    timestamp=event.timestamp,
+                    agent_id=event.agent_id,
+                    source=event.source,
+                    type=event.type,
+                    data={**event.data, "task_id": tool_result_task_ids[tool_use_id]},
+                    parent_id=event.parent_id,
+                )
+
     return events
 
 
@@ -73,6 +107,7 @@ def _parse_jsonl_entry(entry: dict[str, Any]) -> list[UnifiedEvent]:
                     type=EventType.TASK_CREATE,
                     data={
                         "task_id": "",
+                        "tool_use_id": tool_id,
                         "subject": tool_input.get("subject", ""),
                         "description": tool_input.get("description", ""),
                     },
@@ -86,6 +121,7 @@ def _parse_jsonl_entry(entry: dict[str, Any]) -> list[UnifiedEvent]:
                     type=EventType.TASK_UPDATE,
                     data={
                         "task_id": tool_input.get("taskId", ""),
+                        "tool_use_id": tool_id,
                         "new_status": tool_input.get("status", ""),
                         "old_status": "",
                         "owner": tool_input.get("owner", ""),

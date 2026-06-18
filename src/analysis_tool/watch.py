@@ -70,13 +70,13 @@ class KqueueWatcher:
                 self._register(f)
 
     def _register(self, path: Path) -> None:
+        # Check by path, not by fd — os.open() always returns a unique fd
+        if path in self._fd_to_path.values():
+            return
+
         try:
             fd = os.open(str(path), os.O_RDONLY)
         except OSError:
-            return
-
-        if fd in self._fd_to_path:
-            os.close(fd)
             return
 
         self._fd_to_path[fd] = path

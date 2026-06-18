@@ -28,6 +28,15 @@ def test_parse_subagent_jsonl_yields_agent_message(fixtures_dir: Path):
     assert msg.parent_id is not None
 
 
+def test_parse_jsonl_extracts_task_id_from_tool_result(fixtures_dir: Path):
+    events = parse_jsonl(fixtures_dir / "session-tasks.jsonl")
+    creates = [e for e in events if e.type == EventType.TASK_CREATE]
+    assert len(creates) == 1
+    assert creates[0].data["task_id"] == "1"
+    assert creates[0].data["subject"] == "test task"
+    assert creates[0].data["tool_use_id"] == "call_create_1"
+
+
 def test_parse_raw_dir_links_spawn_to_sidechain(fixtures_dir: Path):
     events = parse_raw_dir(fixtures_dir)
 
