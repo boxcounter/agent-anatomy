@@ -1,6 +1,8 @@
 import shutil
 from pathlib import Path
 
+from analysis_tool.errors import SessionNotFoundError
+
 
 def find_session_dir(session_id: str) -> Path:
     """Search ~/.claude/projects/ for a session directory."""
@@ -11,7 +13,7 @@ def find_session_dir(session_id: str) -> Path:
         session_dir = project_dir / session_id
         if session_dir.is_dir():
             return session_dir
-    raise FileNotFoundError(f"Session directory not found for {session_id}")
+    raise SessionNotFoundError(session_id)
 
 
 def collect_session(session_id: str, output_dir: Path) -> Path:

@@ -4,16 +4,35 @@ import threading
 from pathlib import Path
 
 import click
+from jinja2 import TemplateNotFound
 
 from analysis_tool.collect import collect_session, find_session_dir
+from analysis_tool.errors import (
+    AnalysisToolError,
+    RawDataNotFoundError,
+    SessionNotFoundError,
+    TemplateNotFoundError,
+    WatchTargetNotFoundError,
+)
 from analysis_tool.models import UnifiedEvent
 from analysis_tool.parser import parse_raw_dir
 
 
+def _debug() -> bool:
+    """Check if --debug flag was passed."""
+    ctx = click.get_current_context()
+    # ctx.ensure_object(dict) was called in main(), so obj is always a dict
+    obj: dict[object, object] = ctx.obj  # type: ignore[assignment]
+    return bool(obj.get("debug", False))
+
+
 @click.group()
-def main() -> None:
+@click.option("--debug", is_flag=True, default=False, help="Show full tracebacks on error")
+@click.pass_context
+def main(ctx: click.Context, debug: bool) -> None:  # type: ignore[no-any-unimported]
     """Claude Code Agent Team session analysis tool."""
-    pass
+    ctx.ensure_object(dict)
+    ctx.obj["debug"] = debug
 
 
 @main.command()
@@ -26,6 +45,40 @@ def main() -> None:
 )
 def collect(session_id: str, output_dir: str | None) -> None:
     """Collect raw data from a Sub-agent mode session."""
+    try:
+        _collect(session_id, output_dir)
+    except SessionNotFoundError as exc:
+        click.echo(
+            f"Session '{exc.session_id}' not found.\n\n"
+            f"  Look up session IDs with: ls ~/.claude/projects/*/",
+            err=True,
+        )
+        if _debug():
+            raise
+        raise SystemExit(1)
+    except RawDataNotFoundError as exc:
+        click.echo(
+            f"No session data at {exc.path}.\n\n"
+            f"  Run 'collect --session-id=<id>' first to gather raw data,\n"
+            f"  or check that the path points to a directory containing raw/session.jsonl.",
+            err=True,
+        )
+        if _debug():
+            raise
+        raise SystemExit(1)
+    except AnalysisToolError as exc:
+        click.echo(str(exc), err=True)
+        if _debug():
+            raise
+        raise SystemExit(1)
+    except OSError as exc:
+        click.echo(f"File system error: {exc.strerror or exc}", err=True)
+        if _debug():
+            raise
+        raise SystemExit(1)
+
+
+def _collect(session_id: str, output_dir: str | None) -> None:
     if output_dir is None:
         output_path = find_session_dir(session_id)
     else:
@@ -34,7 +87,6 @@ def collect(session_id: str, output_dir: str | None) -> None:
     analysis_dir = collect_session(session_id, output_path)
     click.echo(f"Raw data collected to {analysis_dir / 'raw'}")
 
-    # Also run parser immediately
     events = parse_raw_dir(analysis_dir / "raw")
     events_file = analysis_dir / "events.jsonl"
 
@@ -48,8 +100,40 @@ def collect(session_id: str, output_dir: str | None) -> None:
 @click.option("--session-dir", required=True, help="Path to analysis/ directory")
 def analyze(session_dir: str) -> None:
     """Analyze a collected session and generate reports."""
-    import json
+    try:
+        _analyze(session_dir)
+    except RawDataNotFoundError as exc:
+        click.echo(
+            f"No session data at {exc.path}.\n\n"
+            f"  Run 'collect --session-id=<id>' first to gather raw data,\n"
+            f"  or check that the path points to a directory containing raw/session.jsonl.",
+            err=True,
+        )
+        if _debug():
+            raise
+        raise SystemExit(1)
+    except TemplateNotFoundError as exc:
+        click.echo(
+            f"Template '{exc.template_name}' is missing.\n\n"
+            f"  Reinstall the package: uv sync",
+            err=True,
+        )
+        if _debug():
+            raise
+        raise SystemExit(1)
+    except AnalysisToolError as exc:
+        click.echo(str(exc), err=True)
+        if _debug():
+            raise
+        raise SystemExit(1)
+    except OSError as exc:
+        click.echo(f"File system error: {exc.strerror or exc}", err=True)
+        if _debug():
+            raise
+        raise SystemExit(1)
 
+
+def _analyze(session_dir: str) -> None:
     analysis_dir = Path(session_dir)
     raw_dir = analysis_dir / "raw"
 
@@ -57,17 +141,14 @@ def analyze(session_dir: str) -> None:
         click.echo(f"Error: raw/ directory not found in {analysis_dir}", err=True)
         raise SystemExit(1)
 
-    # Parse events
     events = parse_raw_dir(raw_dir)
     click.echo(f"Parsed {len(events)} events")
 
-    # Write unified event stream
     events_file = analysis_dir / "events.jsonl"
     with open(events_file, "w") as f:
         for event in events:
             f.write(json.dumps(_event_to_dict(event), default=str) + "\n")
 
-    # Generate state machine report
     from analysis_tool.state_machine import build_state_machines, detect_anomalies
     machines = build_state_machines(events)
     anomalies = detect_anomalies(machines)
@@ -82,7 +163,6 @@ def analyze(session_dir: str) -> None:
         for a in anomalies:
             click.echo(f"  [{a.kind}] {a.detail}")
 
-    # Generate collaboration graph
     from analysis_tool.graph import build_collaboration_graph, to_mermaid
     graph = build_collaboration_graph(events)
     mermaid = to_mermaid(graph)
@@ -92,20 +172,22 @@ def analyze(session_dir: str) -> None:
     click.echo(f"\nCollaboration graph written to {graph_file}")
     click.echo(f"  Nodes: {len(graph.nodes)}, Edges: {len(graph.edges)}")
 
-    # Generate report
     from analysis_tool.comparator import session_summary
     summary = session_summary(events)
     report_file = analysis_dir / "report.md"
     report_file.write_text(summary)
     click.echo(f"\nReport written to {report_file}")
 
-    # Generate timeline
     from analysis_tool.timeline import build_timeline_data, render_html
     timeline_data = build_timeline_data(events)
     template_dir = Path(__file__).parent / "templates"
     timeline_file = analysis_dir / "timeline.html"
-    render_html(timeline_data, template_dir, timeline_file)
-    click.echo(f"Timeline written to {timeline_file}")
+    try:
+        render_html(timeline_data, template_dir, timeline_file)
+        click.echo(f"Timeline written to {timeline_file}")
+    except TemplateNotFound as exc:
+        name: str = exc.name if isinstance(exc.name, str) else str(exc)
+        raise TemplateNotFoundError(name) from exc
 
     click.echo("\nDone.")
 
@@ -118,14 +200,41 @@ def watch(team_name: str, output_dir: str | None) -> None:
 
     Runs until interrupted (Ctrl+C). Outputs team-events.jsonl.
     """
-    from pathlib import Path
+    try:
+        _watch(team_name, output_dir)
+    except WatchTargetNotFoundError as exc:
+        click.echo(
+            f"Team '{exc.team_name}' not found.\n\n"
+            f"  Make sure an Agent Team session with this name is active.\n"
+            f"  Team directories: ls ~/.claude/teams/",
+            err=True,
+        )
+        if _debug():
+            raise
+        raise SystemExit(1)
+    except AnalysisToolError as exc:
+        click.echo(str(exc), err=True)
+        if _debug():
+            raise
+        raise SystemExit(1)
+    except OSError as exc:
+        click.echo(f"File system error: {exc.strerror or exc}", err=True)
+        if _debug():
+            raise
+        raise SystemExit(1)
 
+
+def _watch(team_name: str, output_dir: str | None) -> None:
     from analysis_tool.watch import watch_teams
 
     if output_dir is None:
         output_path = Path.home() / ".claude" / "agent-team-analysis" / team_name
     else:
         output_path = Path(output_dir)
+
+    teams_dir = Path.home() / ".claude" / "teams" / team_name
+    if not teams_dir.is_dir():
+        raise WatchTargetNotFoundError(team_name)
 
     stop_event = threading.Event()
 

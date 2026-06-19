@@ -4,6 +4,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
+import click
+
+from analysis_tool.errors import ParseError, RawDataNotFoundError
 from analysis_tool.models import EventSource, EventType, UnifiedEvent
 
 
@@ -11,12 +14,21 @@ def parse_jsonl(path: Path) -> list[UnifiedEvent]:
     events: list[UnifiedEvent] = []
     tool_result_task_ids: dict[str, str] = {}  # tool_use_id -> taskId
 
-    with open(path) as f:
-        for line in f:
+    try:
+        f = open(path)
+    except OSError as exc:
+        raise ParseError(str(path), str(exc)) from exc
+
+    with f:
+        for line_num, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
                 continue
-            entry = json.loads(line)
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError as exc:
+                click.echo(f"Warning: skipping malformed JSON on line {line_num} of {path}: {exc}", err=True)
+                continue
 
             # Scan tool_result blocks for task IDs (from TaskCreate/TaskUpdate results)
             message = cast(dict[str, Any], entry.get("message", {}))
@@ -164,10 +176,11 @@ def parse_raw_dir(raw_dir: Path) -> list[UnifiedEvent]:
     """Parse all raw data in a session analysis/raw directory into unified events."""
     all_events: list[UnifiedEvent] = []
 
-    # 1. Parse main session transcript
     session_jsonl = raw_dir / "session.jsonl"
-    if session_jsonl.exists():
-        all_events.extend(parse_jsonl(session_jsonl))
+    if not session_jsonl.exists():
+        raise RawDataNotFoundError(str(raw_dir))
+
+    all_events.extend(parse_jsonl(session_jsonl))
 
     # 2. Parse subagent sidechains
     subagents_dir = raw_dir / "subagents"
