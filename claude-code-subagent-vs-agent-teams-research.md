@@ -150,7 +150,7 @@ Next.js pages → app router 迁移案例：单个 session 两小时后崩溃（
 
 ### Sub-agent 痛点
 
-1. **与父 session 共享 token 预算**（最常被提及的技术限制）。GitHub issue #10212 记录：5 个并行 sub-agent 中 **3 个触达 8192 output token 上限**，每次失败前消耗 10-15K token。200K 的 token 预算降至约 166K，仅有约 50% 的有效输出。
+1. **与父 session 共享 token 预算**（最常被提及的技术限制）。[GitHub issue #10212](https://github.com/anthropics/claude-code/issues/10212) 记录：5 个并行 sub-agent 中 **3 个触达 8192 output token 上限**，每次失败前消耗 10-15K token。200K 的 token 预算降至约 166K，仅有约 50% 的有效输出。
 
 2. **Token 成本 4-15x**：Anthropic 官方数据显示多 agent 工作流消耗可达单 agent 的 15 倍 token。[来源](https://claude.com/blog/subagents-in-claude-code)
 
