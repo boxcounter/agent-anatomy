@@ -97,11 +97,37 @@ def _collect(session_id: str, output_dir: str | None) -> None:
 
 
 @main.command()
-@click.option("--session-dir", required=True, help="Path to analysis/ directory")
-def analyze(session_dir: str) -> None:
-    """Analyze a collected session and generate reports."""
+@click.option("--session-id", default=None, help="Session ID (auto-resolves analysis dir from ~/.claude/projects)")
+@click.option("--session-dir", default=None, help="Path to analysis/ directory")
+def analyze(session_id: str | None, session_dir: str | None) -> None:
+    """Analyze a collected session and generate reports.
+
+    Use --session-id for convenience (auto-finds the session).
+    Use --session-dir when you collected data to a custom location.
+    """
+    if session_id and session_dir:
+        click.echo("Error: use --session-id or --session-dir, not both.", err=True)
+        raise SystemExit(1)
+    if not session_id and not session_dir:
+        click.echo("Error: specify --session-id or --session-dir.", err=True)
+        raise SystemExit(1)
+
     try:
-        _analyze(session_dir)
+        if session_id:
+            resolved = str(find_session_dir(session_id) / "analysis")
+        else:
+            assert session_dir is not None
+            resolved = session_dir
+        _analyze(resolved)
+    except SessionNotFoundError as exc:
+        click.echo(
+            f"Session '{exc.session_id}' not found.\n\n"
+            f"  Look up session IDs with: ls ~/.claude/projects/*/",
+            err=True,
+        )
+        if _debug():
+            raise
+        raise SystemExit(1)
     except RawDataNotFoundError as exc:
         click.echo(
             f"No session data at {exc.path}.\n\n"
