@@ -192,7 +192,7 @@ Next.js pages → app router 迁移案例：单个 session 两小时后崩溃（
 
 3. **无人监督时 bug 复合**："在几天的'高生产力'之后，是几周清理烂摊子。"[来源](https://news.ycombinator.com/item?id=46743908)
 
-4. **社区编目的 7 类 Token 浪费模式**（GitHub issue #13579，基于约 2M token 的实际使用量）：
+4. **社区编目的 7 类 Token 浪费模式**（[GitHub issue #13579](https://github.com/anthropics/claude-code/issues/13579)，基于约 2M token 的实际使用量）：
 
 | 模式 | 浪费 Token | 可节省 |
 |------|-----------|--------|
@@ -203,7 +203,7 @@ Next.js pages → app router 迁移案例：单个 session 两小时后崩溃（
 
 5. **上下文窗口退化**：CLAUDE.md 在 compaction 中被稀释。Agent "在上下文窗口填满之前就开始忘记或忽略 claude.md"。[来源](https://news.ycombinator.com/item?id=47373327)
 
-6. **$6,000 的教训**：Reddit 用户报告了一个无人监督的 agent 循环一夜之间消耗约 $6,000。教训："用 Claude 构建自动化，而不是让 Claude 成为自动化"——设置消费上限和短生命周期 session。
+6. **$6,000 的教训**：[Reddit 用户](https://reddit.com/r/ClaudeAI/comments/1t11mmy/i_accidentally_burned_6000_of_claude_usage/) 报告了一个无人监督的 agent 循环一夜之间消耗约 $6,000。教训："用 Claude 构建自动化，而不是让 Claude 成为自动化"——设置消费上限和短生命周期 session。
 
 ---
 
@@ -373,7 +373,7 @@ u/Vikrant Shukla："announce, ack, edit, commit, release" 序列写入 team syst
 47. [r/ClaudeCode: I reverse engineered how Agent Teams works (208 upvotes)](https://reddit.com/r/ClaudeCode/comments/1qyj35i)
 48. [r/ClaudeCode: What is going on? (context management, 326+ upvotes)](https://reddit.com/r/ClaudeCode/comments/1t3cf1w/what_is_going_on/)
 49. [r/ClaudeAI: Cost routing (1.7K upvotes)](https://reddit.com/r/ClaudeAI/comments/1t1o43w/i_gave_claude_code_a_002call_coworker_and_stopped/)
-50. [r/ClaudeAI: $6,000 overnight agent loop (1.3K upvotes)](https://www.reddit.com/r/ClaudeAI/comments/1t11mmy/i_accidentally_burned_6000_of_claude_usage/)
+50. [r/ClaudeAI: $6,000 overnight agent loop (1.3K upvotes)](https://reddit.com/r/ClaudeAI/comments/1t11mmy/i_accidentally_burned_6000_of_claude_usage/)
 51. [dev.to Leah Dalton: Reddit's AI-Agent Builders Are Debating Cost, Context](https://dev.to/leah_dalton_d9ae0410b3f5f/reddits-ai-agent-builders-are-debating-cost-context-and-what-actually-counts-as-an-agent-2b4d)
 52. [dev.to Malissia Rowland: What Reddit's Agent Builders Were Actually Debugging](https://dev.to/malissia_rowland_7cee31fc/what-reddits-agent-builders-were-actually-debugging-this-week-1hpc)
 
