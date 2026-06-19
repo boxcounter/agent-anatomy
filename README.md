@@ -1,0 +1,57 @@
+# Agent Team Analysis Tool
+
+分析 Claude Code Agent Team 会话的工具。采集多进程 session 的原始数据，产出统一事件流、交互式时间线、协作图和对比分析报告。
+
+## 安装
+
+```bash
+# 需要 Python 3.12+
+uv sync
+```
+
+## 命令
+
+### `collect` —— 事后采集 Sub-agent 模式 session
+
+Session 结束后运行。拷贝 JSONL transcript 和 sub-agent sidechain 到统一目录。
+
+```bash
+uv run analysis-tool collect --session-id=<session-id>
+
+# 查找 session ID
+ls ~/.claude/projects/*/
+```
+
+### `watch` —— 运行时监控 Agent Team 模式
+
+在启动 Agent Team session **之前**启动，Ctrl+C 停止。通过 kqueue 监控 mailbox 和 task 文件变更。
+
+```bash
+uv run analysis-tool watch --team-name=<team-name>
+```
+
+### `analyze` —— 生成分析报告
+
+从采集/监控的原始数据中生成分析产物。
+
+```bash
+uv run analysis-tool analyze --session-dir=<path-to-analysis-dir>
+```
+
+产出四个文件：
+- `events.jsonl` —— 统一事件流
+- `timeline.html` —— D3.js 交互式时间线
+- `graph.mermaid` —— 协作图（Mermaid 格式）
+- `report.md` —— 对比分析报告
+
+## 开发
+
+```bash
+uv run pytest tests/ -v       # 运行测试
+uv run ruff check src/ tests/  # Lint
+uv run pyright src/ tests/     # 类型检查
+```
+
+### 技术选型
+
+Python 3.12+, uv, Click, Jinja2, D3.js, pytest, ruff, pyright (strict mode)。
