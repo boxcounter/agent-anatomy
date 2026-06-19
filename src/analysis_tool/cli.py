@@ -39,9 +39,10 @@ def main(ctx: click.Context, debug: bool) -> None:  # type: ignore[no-any-unimpo
 @click.option("--session-id", required=True, help="Session ID to collect")
 @click.option(
     "--output",
+    "-o",
     "output_dir",
     default=None,
-    help="Output directory (default: next to session dir)",
+    help="Output directory (default: ./analysis)",
 )
 def collect(session_id: str, output_dir: str | None) -> None:
     """Collect raw data from a Sub-agent mode session."""
@@ -79,10 +80,7 @@ def collect(session_id: str, output_dir: str | None) -> None:
 
 
 def _collect(session_id: str, output_dir: str | None) -> None:
-    if output_dir is None:
-        output_path = find_session_dir(session_id)
-    else:
-        output_path = Path(output_dir)
+    output_path = Path(output_dir) if output_dir else Path.cwd()
 
     analysis_dir = collect_session(session_id, output_path)
     click.echo(f"Raw data collected to {analysis_dir / 'raw'}")
@@ -108,16 +106,14 @@ def analyze(session_id: str | None, session_dir: str | None) -> None:
     if session_id and session_dir:
         click.echo("Error: use --session-id or --session-dir, not both.", err=True)
         raise SystemExit(1)
-    if not session_id and not session_dir:
-        click.echo("Error: specify --session-id or --session-dir.", err=True)
-        raise SystemExit(1)
 
     try:
         if session_id:
             resolved = str(find_session_dir(session_id) / "analysis")
-        else:
-            assert session_dir is not None
+        elif session_dir:
             resolved = session_dir
+        else:
+            resolved = "analysis"  # default: ./analysis
         _analyze(resolved)
     except SessionNotFoundError as exc:
         click.echo(
@@ -220,7 +216,7 @@ def _analyze(session_dir: str) -> None:
 
 @main.command()
 @click.option("--team-name", required=True, help="Team name (same as session ID)")
-@click.option("--output", "output_dir", default=None, help="Output directory for analysis data")
+@click.option("--output", "-o", "output_dir", default=None, help="Output directory (default: ./analysis)")
 def watch(team_name: str, output_dir: str | None) -> None:
     """Monitor Agent Team communication files in real-time.
 
@@ -253,10 +249,7 @@ def watch(team_name: str, output_dir: str | None) -> None:
 def _watch(team_name: str, output_dir: str | None) -> None:
     from analysis_tool.watch import watch_teams
 
-    if output_dir is None:
-        output_path = Path.home() / ".claude" / "agent-team-analysis" / team_name
-    else:
-        output_path = Path(output_dir)
+    output_path = Path(output_dir) if output_dir else Path("analysis")
 
     teams_dir = Path.home() / ".claude" / "teams" / team_name
     if not teams_dir.is_dir():
