@@ -41,11 +41,13 @@ def parse_jsonl(path: Path) -> list[UnifiedEvent]:
             for block in raw_cont:
                 if isinstance(block, dict) and block.get("type") == "tool_result":
                     tool_use_id: str = block.get("tool_use_id", "")
-                    result_content = cast(list[dict[str, Any]], block.get("content", []))
+                    result_content: Any = block.get("content", [])
+                    if not isinstance(result_content, list):
+                        continue
                     for rc in result_content:
                         if isinstance(rc, dict) and rc.get("type") == "text":
                             try:
-                                result_data = json.loads(rc.get("text", "{}"))
+                                result_data = json.loads(rc.get("text", "{}"))  # type: ignore[reportUnknownArgumentType]
                                 if "id" in result_data and tool_use_id:
                                     tool_result_task_ids[tool_use_id] = result_data["id"]
                             except (json.JSONDecodeError, TypeError):
@@ -128,7 +130,7 @@ def _parse_jsonl_entry(entry: dict[str, Any]) -> list[UnifiedEvent]:
                     msg_raw: Any = tool_input.get("message", {})
                     msg_type = "message"
                     if isinstance(msg_raw, dict):
-                        msg_type = str(msg_raw.get("type", "message"))
+                        msg_type = str(msg_raw.get("type", "message"))  # type: ignore[reportUnknownArgumentType]
                     events.append(UnifiedEvent.create(
                         timestamp=ts,
                         agent_id=agent_id,
