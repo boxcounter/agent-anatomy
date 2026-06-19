@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false
 import json
 import uuid
 from datetime import datetime
@@ -12,7 +13,7 @@ from analysis_tool.models import EventSource, EventType, UnifiedEvent
 
 def parse_jsonl(path: Path) -> list[UnifiedEvent]:
     events: list[UnifiedEvent] = []
-    tool_result_task_ids: dict[str, str] = {}  # tool_use_id -> taskId
+    tool_result_task_ids: dict[str, str] = {}
 
     try:
         f = open(path)
@@ -31,14 +32,18 @@ def parse_jsonl(path: Path) -> list[UnifiedEvent]:
                 continue
 
             # Scan tool_result blocks for task IDs (from TaskCreate/TaskUpdate results)
-            message = cast(dict[str, Any], entry.get("message", {}))
-            content = cast(list[dict[str, Any]], message.get("content", []))
-            for block in content:
-                if block.get("type") == "tool_result":
+            raw_msg = entry.get("message", {})
+            if not isinstance(raw_msg, dict):
+                continue
+            raw_cont = raw_msg.get("content", [])
+            if not isinstance(raw_cont, list):
+                continue
+            for block in raw_cont:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
                     tool_use_id: str = block.get("tool_use_id", "")
                     result_content = cast(list[dict[str, Any]], block.get("content", []))
                     for rc in result_content:
-                        if rc.get("type") == "text":
+                        if isinstance(rc, dict) and rc.get("type") == "text":
                             try:
                                 result_data = json.loads(rc.get("text", "{}"))
                                 if "id" in result_data and tool_use_id:
@@ -68,106 +73,135 @@ def parse_jsonl(path: Path) -> list[UnifiedEvent]:
 
 def _parse_jsonl_entry(entry: dict[str, Any]) -> list[UnifiedEvent]:
     events: list[UnifiedEvent] = []
-    agent_id: str = entry.get("agentId", "unknown")
-    ts = datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
+
+    # Skip metadata entries that don't represent user/assistant messages
+    entry_type = entry.get("type", "")
+    if entry_type not in ("user", "assistant"):
+        return events
+
+    # Require timestamp — skip entries without it (e.g., mode/permission/file-history)
+    ts_raw = entry.get("timestamp")
+    if not ts_raw:
+        return events
+
+    agent_id: str = entry.get("agentId", entry.get("sessionId", "unknown"))
+    ts = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
     parent_uuid_raw = entry.get("parentUuid")
     parent_id = uuid.UUID(parent_uuid_raw) if parent_uuid_raw else None
 
-    message: dict[str, Any] = cast(dict[str, Any], entry.get("message", {}))
-    content: list[dict[str, Any]] = cast(list[dict[str, Any]], message.get("content", []))
+    message: Any = entry.get("message", {})
+    if not isinstance(message, dict):
+        return events
+    message = cast(dict[str, Any], message)
+    content: Any = message.get("content", [])
+    if not isinstance(content, list):
+        return events
+    content = cast(list[dict[str, Any]], content)
 
-    for block in content:
-        if block.get("type") == "tool_use":
-            name: str = block.get("name", "")
-            tool_input: dict[str, Any] = cast(dict[str, Any], block.get("input", {}))
-            tool_id: str = block.get("id", "")
+    try:
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use":
+                name: str = block.get("name", "")
+                tool_input_raw: Any = block.get("input", {})
+                if not isinstance(tool_input_raw, dict):
+                    continue
+                tool_input = cast(dict[str, Any], tool_input_raw)
+                tool_id: str = block.get("id", "")
 
-            if name == "Agent":
-                events.append(UnifiedEvent.create(
-                    timestamp=ts,
-                    agent_id=agent_id,
-                    source=EventSource.TRANSCRIPT,
-                    type=EventType.AGENT_SPAWN,
-                    data={
-                        "child_agent_id": "",
-                        "tool_use_id": tool_id,
-                        "agent_type": tool_input.get("subagent_type", "general-purpose"),
-                        "description": tool_input.get("description", ""),
-                    },
-                    parent_id=parent_id,
-                ))
-            elif name == "SendMessage":
-                msg_obj: dict[str, Any] = cast(dict[str, Any], tool_input.get("message", {}))
-                events.append(UnifiedEvent.create(
-                    timestamp=ts,
-                    agent_id=agent_id,
-                    source=EventSource.TRANSCRIPT,
-                    type=EventType.MESSAGE_SEND,
-                    data={
-                        "from": agent_id,
-                        "to": tool_input.get("to", ""),
-                        "summary": tool_input.get("summary", ""),
-                        "message_type": msg_obj.get("type", "message"),
-                    },
-                    parent_id=parent_id,
-                ))
-            elif name == "TaskCreate":
-                events.append(UnifiedEvent.create(
-                    timestamp=ts,
-                    agent_id=agent_id,
-                    source=EventSource.TRANSCRIPT,
-                    type=EventType.TASK_CREATE,
-                    data={
-                        "task_id": "",
-                        "tool_use_id": tool_id,
-                        "subject": tool_input.get("subject", ""),
-                        "description": tool_input.get("description", ""),
-                    },
-                    parent_id=parent_id,
-                ))
-            elif name == "TaskUpdate":
-                events.append(UnifiedEvent.create(
-                    timestamp=ts,
-                    agent_id=agent_id,
-                    source=EventSource.TRANSCRIPT,
-                    type=EventType.TASK_UPDATE,
-                    data={
-                        "task_id": tool_input.get("taskId", ""),
-                        "tool_use_id": tool_id,
-                        "new_status": tool_input.get("status", ""),
-                        "old_status": "",
-                        "owner": tool_input.get("owner", ""),
-                    },
-                    parent_id=parent_id,
-                ))
+                if name == "Agent":
+                    events.append(UnifiedEvent.create(
+                        timestamp=ts,
+                        agent_id=agent_id,
+                        source=EventSource.TRANSCRIPT,
+                        type=EventType.AGENT_SPAWN,
+                        data={
+                            "child_agent_id": "",
+                            "tool_use_id": tool_id,
+                            "agent_type": tool_input.get("subagent_type", "general-purpose"),
+                            "description": tool_input.get("description", ""),
+                        },
+                        parent_id=parent_id,
+                    ))
+                elif name == "SendMessage":
+                    msg_raw: Any = tool_input.get("message", {})
+                    msg_type = "message"
+                    if isinstance(msg_raw, dict):
+                        msg_type = str(msg_raw.get("type", "message"))
+                    events.append(UnifiedEvent.create(
+                        timestamp=ts,
+                        agent_id=agent_id,
+                        source=EventSource.TRANSCRIPT,
+                        type=EventType.MESSAGE_SEND,
+                        data={
+                            "from": agent_id,
+                            "to": str(tool_input.get("to", "")),
+                            "summary": str(tool_input.get("summary", "")),
+                            "message_type": msg_type,
+                        },
+                        parent_id=parent_id,
+                    ))
+                elif name == "TaskCreate":
+                    events.append(UnifiedEvent.create(
+                        timestamp=ts,
+                        agent_id=agent_id,
+                        source=EventSource.TRANSCRIPT,
+                        type=EventType.TASK_CREATE,
+                        data={
+                            "task_id": "",
+                            "tool_use_id": tool_id,
+                            "subject": str(tool_input.get("subject", "")),
+                            "description": str(tool_input.get("description", "")),
+                        },
+                        parent_id=parent_id,
+                    ))
+                elif name == "TaskUpdate":
+                    events.append(UnifiedEvent.create(
+                        timestamp=ts,
+                        agent_id=agent_id,
+                        source=EventSource.TRANSCRIPT,
+                        type=EventType.TASK_UPDATE,
+                        data={
+                            "task_id": str(tool_input.get("taskId", "")),
+                            "tool_use_id": tool_id,
+                            "new_status": str(tool_input.get("status", "")),
+                            "old_status": "",
+                            "owner": str(tool_input.get("owner", "")),
+                        },
+                        parent_id=parent_id,
+                    ))
 
-    # Also emit an agent_message event for the text content
-    text_parts: list[str] = [
-        b.get("text", "")
-        for b in content
-        if b.get("type") == "text"
-    ]
-    summary = " ".join(text_parts)[:200] if text_parts else ""
-
-    if summary:
-        tool_call_names: list[str] = [
-            b.get("name", "")
+        # Also emit an agent_message event for the text content
+        text_parts: list[str] = [
+            b.get("text", "")
             for b in content
-            if b.get("type") == "tool_use"
+            if isinstance(b, dict) and b.get("type") == "text"
         ]
-        events.append(UnifiedEvent.create(
-            timestamp=ts,
-            agent_id=agent_id,
-            source=EventSource.TRANSCRIPT,
-            type=EventType.AGENT_MESSAGE,
-            data={
-                "role": message.get("role", "unknown"),
-                "content_summary": summary,
-                "token_usage": message.get("usage", {}),
-                "tool_calls": tool_call_names,
-            },
-            parent_id=parent_id,
-        ))
+        summary = " ".join(text_parts)[:200] if text_parts else ""
+
+        if summary:
+            tool_call_names: list[str] = [
+                b.get("name", "")
+                for b in content
+                if isinstance(b, dict) and b.get("type") == "tool_use"
+            ]
+            events.append(UnifiedEvent.create(
+                timestamp=ts,
+                agent_id=agent_id,
+                source=EventSource.TRANSCRIPT,
+                type=EventType.AGENT_MESSAGE,
+                data={
+                    "role": str(message.get("role", "unknown")),
+                    "content_summary": summary,
+                    "token_usage": message.get("usage", {}),
+                    "tool_calls": tool_call_names,
+                },
+                parent_id=parent_id,
+            ))
+    except Exception:
+        # Skip entries that don't match expected format
+        pass
 
     return events
 
@@ -241,9 +275,9 @@ def parse_team_events(path: Path) -> list[UnifiedEvent]:
         ts = datetime.fromisoformat(snap["timestamp"].replace("Z", "+00:00"))
 
         if i == 0 and snap.get("kind") == "mailbox_snapshot":
-            raw_content = snap.get("content", [])
-            if isinstance(raw_content, list):
-                content = cast(list[dict[str, Any]], raw_content)
+            content = snap.get("content", [])
+            if isinstance(content, list):
+                content = cast(list[dict[str, Any]], content)
                 for msg in content:
                     events.append(UnifiedEvent.create(
                         timestamp=ts,

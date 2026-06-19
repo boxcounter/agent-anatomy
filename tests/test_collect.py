@@ -19,11 +19,13 @@ def test_collect_session_copies_session_jsonl(
     # Mock ~/.claude/projects path
     fake_projects = tmp_path / "projects"
     fake_projects.mkdir()
-    session_dir = fake_projects / "test-project" / "sid-1234"
+    project_dir = fake_projects / "test-project"
+    session_dir = project_dir / "sid-1234"
     session_dir.mkdir(parents=True)
-    (session_dir / "sid-1234.jsonl").write_text('{"test": true}\n')
+    # Main JSONL is at project_dir level
+    (project_dir / "sid-1234.jsonl").write_text('{"test": true}\n')
 
-    subagents_dir = session_dir / "sid-1234" / "subagents"
+    subagents_dir = session_dir / "subagents"
     subagents_dir.mkdir(parents=True)
     (subagents_dir / "agent-x.jsonl").write_text('{"sidechain": true}\n')
     (subagents_dir / "agent-x.meta.json").write_text('{"toolUseId": "call_123"}')

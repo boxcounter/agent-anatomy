@@ -26,14 +26,15 @@ def collect_session(session_id: str, output_dir: Path) -> Path:
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     session_dir = find_session_dir(session_id)
+    project_dir = session_dir.parent  # project dir contains the main JSONL
 
-    # 1. Copy main transcript
-    jsonl_file = session_dir / f"{session_id}.jsonl"
+    # 1. Copy main transcript (at project_dir level, not inside session_dir)
+    jsonl_file = project_dir / f"{session_id}.jsonl"
     if jsonl_file.exists():
         shutil.copy2(jsonl_file, raw_dir / "session.jsonl")
 
-    # 2. Copy subagent sidechains
-    subagents_src = session_dir / session_id / "subagents"
+    # 2. Copy subagent sidechains (inside session_dir)
+    subagents_src = session_dir / "subagents"
     subagents_dst = raw_dir / "subagents"
     if subagents_src.is_dir():
         subagents_dst.mkdir(exist_ok=True)
