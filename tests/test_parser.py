@@ -103,3 +103,27 @@ def test_parse_raw_dir_links_nested_spawn(tmp_path: Path):
               if e.type == EventType.AGENT_SPAWN}
     assert spawns["callB"] == "agent-B"
     assert spawns["callC"] == "agent-C"  # nested spawn linked despite ordering
+
+
+def test_structured_output_rendered_into_agent_message(tmp_path: Path):
+    # A workflow agent that returns via the StructuredOutput tool carries its
+    # real result in the tool_use *input* — it must reach the agent's output,
+    # not be dropped (the turn has no text block of its own).
+    entry = {
+        "type": "assistant",
+        "timestamp": "2026-06-19T17:00:10.000Z",
+        "agentId": "w1",
+        "uuid": "00000000-0000-0000-0000-0000000000d1",
+        "parentUuid": None,
+        "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "so1", "name": "StructuredOutput",
+             "input": {"angles": [{"label": "A", "rationale": "angle-A-rationale"}]}},
+        ]},
+    }
+    f = tmp_path / "s.jsonl"
+    f.write_text(json.dumps(entry) + "\n")
+
+    msgs = [e for e in parse_jsonl(f) if e.type == EventType.AGENT_MESSAGE]
+    assert len(msgs) == 1
+    assert "angle-A-rationale" in msgs[0].data["text"]
+    assert "StructuredOutput" in msgs[0].data["tool_calls"]

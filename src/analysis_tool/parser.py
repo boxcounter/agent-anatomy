@@ -224,10 +224,33 @@ def _parse_jsonl_entry(entry: dict[str, Any]) -> list[UnifiedEvent]:
             for b in content
             if isinstance(b, dict) and b.get("type") == "text"
         ]
-        full_text = "\n\n".join(p for p in text_parts if p)
-        summary = " ".join(text_parts)[:200] if text_parts else ""
 
-        if summary:
+        # A workflow agent that returns via `schema:` does so through the
+        # StructuredOutput tool — its result lives in the tool_use *input*, not
+        # in a text block. Render it so the agent's actual output (the angles,
+        # verdict, synthesis…) reaches the per-agent transcript instead of just
+        # the "I returned it via structured output" postamble.
+        structured_parts: list[str] = []
+        for b in content:
+            if not (isinstance(b, dict) and b.get("type") == "tool_use"
+                    and b.get("name") == "StructuredOutput"):
+                continue
+            payload: Any = b.get("input", {})
+            try:
+                rendered = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+            except (TypeError, ValueError):
+                rendered = "(unserializable structured output)"
+            structured_parts.append(f"**Structured output:**\n\n```json\n{rendered}\n```")
+
+        full_text = "\n\n".join([*(p for p in text_parts if p), *structured_parts])
+        if text_parts:
+            summary = " ".join(text_parts)[:200]
+        elif structured_parts:
+            summary = "(structured output)"
+        else:
+            summary = ""
+
+        if full_text:
             tool_call_names: list[str] = [
                 b.get("name", "")
                 for b in content
