@@ -1,0 +1,7 @@
+# Generated analysis artifacts (regenerate with: analysis-tool collect && analyze)
+cases/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
