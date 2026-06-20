@@ -58,6 +58,17 @@
   .hint { color: #888; font-size: 12px; margin-top: -6px; }
   .clickable { cursor: pointer; }
   tbody tr.clickable:hover { background: #f0f6ff; }
+  details.phase-group { background: #fff; border: 1px solid #e6e6e6; border-radius: 8px;
+                        margin: 8px 0; overflow: hidden; }
+  details.phase-group > summary { cursor: pointer; padding: 9px 14px; font-size: 13px;
+                                  display: flex; align-items: center; gap: 8px;
+                                  list-style: none; user-select: none; }
+  details.phase-group > summary::-webkit-details-marker { display: none; }
+  details.phase-group > summary::before { content: "▸"; color: #999; font-size: 11px; }
+  details.phase-group[open] > summary::before { content: "▾"; }
+  details.phase-group > summary:hover { background: #fafafa; }
+  details.phase-group .grp-meta { color: #777; font-size: 12px; }
+  details.phase-group table { border-top: 1px solid #eee; }
   .drawer { position: fixed; top: 0; right: 0; width: min(620px, 94vw); height: 100%;
             background: #fff; box-shadow: -2px 0 18px rgba(0,0,0,.22); transform: translateX(100%);
             transition: transform .2s ease; overflow-y: auto; overscroll-behavior: contain;
@@ -165,12 +176,11 @@
   <div id="timeline-legend"></div>
   <div class="panel"><div id="timeline"></div></div>
 
-  <h2>Cast — who is who</h2>
-  <p class="hint">Click any agent — a graph node, a timeline lane, or a table row — to read its complete output.</p>
+  {% macro cast_table(rows) %}
   <table>
     <thead><tr><th>Agent</th><th>Role</th><th>Type</th><th>Spawned by</th><th>Events</th><th>Tokens in/out</th></tr></thead>
     <tbody>
-    {% for a in view.agents %}
+    {% for a in rows %}
       <tr class="clickable" onclick="openAgent('{{ a.id }}')">
         <td>{{ a.label }}</td>
         <td><span class="pill" style="background:var(--{{ a.role }})">{{ a.role }}</span></td>
@@ -182,6 +192,43 @@
     {% endfor %}
     </tbody>
   </table>
+  {% endmacro %}
+
+  <h2>Cast — who is who</h2>
+  {% if view.phases %}
+  <p class="hint">Grouped by phase (the spine is the <strong>Phases</strong> table above). Expand a phase to list its agents, then click any agent to read its full output.</p>
+  {% set titles = view.phases | map(attribute='title') | list %}
+  {% set roots = view.agents | selectattr('role', 'equalto', 'root') | list %}
+  {% if roots %}{{ cast_table(roots) }}{% endif %}
+  {% for ph in view.phases %}
+    {% set rows = view.agents | selectattr('role', 'equalto', 'subagent') | selectattr('agent_type', 'equalto', ph.title) | list %}
+    {% if rows %}
+    <details class="phase-group">
+      <summary>
+        <span class="pill" style="background:var(--phase);color:#222">{{ ph.title }}</span>
+        <span class="grp-meta">{{ rows|length }} agents · {{ "{:,}".format(ph.tokens) }} tokens</span>
+      </summary>
+      {{ cast_table(rows) }}
+    </details>
+    {% endif %}
+  {% endfor %}
+  {# Never hide an agent silently: anything not a root and not slotted into a phase lands here. #}
+  {% set other_nonsub = view.agents | rejectattr('role', 'equalto', 'root') | rejectattr('role', 'equalto', 'subagent') | list %}
+  {% set unmatched_sub = view.agents | selectattr('role', 'equalto', 'subagent') | rejectattr('agent_type', 'in', titles) | list %}
+  {% set others = other_nonsub + unmatched_sub %}
+  {% if others %}
+    <details class="phase-group">
+      <summary>
+        <span class="pill" style="background:var(--unknown)">other</span>
+        <span class="grp-meta">{{ others|length }} agents (no phase)</span>
+      </summary>
+      {{ cast_table(others) }}
+    </details>
+  {% endif %}
+  {% else %}
+  <p class="hint">Click any agent — a graph node, a timeline lane, or a table row — to read its complete output.</p>
+  {{ cast_table(view.agents) }}
+  {% endif %}
 
   {% if view.tasks %}
   <h2>Shared task board ({{ view.tasks|length }} team tasks)</h2>
