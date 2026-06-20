@@ -1,0 +1,9 @@
+{
+  "name": "team1",
+  "leadAgentId": "team-lead@team1",
+  "leadSessionId": "sess-1",
+  "members": [
+    {"agentId": "team-lead@team1", "name": "team-lead", "agentType": "team-lead"},
+    {"agentId": "Mate@team1", "name": "Mate", "agentType": "general-purpose"}
+  ]
+}

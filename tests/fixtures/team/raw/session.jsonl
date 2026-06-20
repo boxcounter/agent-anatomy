@@ -1,0 +1,3 @@
+{"type":"assistant","timestamp":"2026-06-18T12:00:00.000Z","agentId":"team-lead@team1","uuid":"t1","message":{"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"TaskCreate","input":{"subject":"Investigate bet 2"}}]}}
+{"type":"user","timestamp":"2026-06-18T12:00:01.000Z","agentId":"team-lead@team1","uuid":"t2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":"Task #1 created successfully: Investigate bet 2"}]}}
+{"type":"assistant","timestamp":"2026-06-18T12:00:02.000Z","agentId":"team-lead@team1","uuid":"t3","message":{"role":"assistant","content":[{"type":"tool_use","id":"call_2","name":"SendMessage","input":{"to":"Mate","summary":"please investigate bet 2","message":{"type":"task_assignment"}}}]}}

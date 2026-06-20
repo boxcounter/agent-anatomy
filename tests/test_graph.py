@@ -42,5 +42,26 @@ def test_to_mermaid_generates_valid_syntax():
     assert "graph TD" in mmd
     assert "lead" in mmd
     assert "agent-a" in mmd
-    assert "-->" in mmd
+    assert "-.->" in mmd  # messages are dashed edges
     assert "1 msg" in mmd
+
+
+def test_to_mermaid_with_topology_renders_spawn_edges_and_roles():
+    from analysis_tool.roles import build_topology
+
+    events = [
+        UnifiedEvent.create(
+            timestamp=datetime(2026, 6, 18, 12, 0, 0, tzinfo=UTC),
+            agent_id="main",
+            source=EventSource.TRANSCRIPT,
+            type=EventType.AGENT_SPAWN,
+            data={"child_agent_id": "agent-a0", "agent_type": "Explore", "description": "look around"},
+        ),
+    ]
+    topology = build_topology(events)
+    graph = build_collaboration_graph(events)
+    mmd = to_mermaid(graph, topology)
+
+    assert "-->|spawns|" in mmd  # spawn edges are solid
+    assert "classDef" in mmd  # role styling present
+    assert "look around" in mmd  # subagent labelled by its task, not a hash

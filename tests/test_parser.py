@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from analysis_tool.models import EventSource, EventType
@@ -53,3 +54,52 @@ def test_parse_raw_dir_links_spawn_to_sidechain(fixtures_dir: Path):
         if e.type == EventType.AGENT_MESSAGE and e.agent_id == "agent-a0"
     ]
     assert len(sidechain_msgs) >= 1
+
+
+def test_parse_jsonl_captures_string_content_message(tmp_path: Path):
+    # A turn whose content is a bare string (e.g. a sub-agent's prompt) must be
+    # captured, not dropped — it's the instruction the agent was given.
+    entry = {
+        "type": "user", "timestamp": "2026-06-18T12:00:00.000Z", "agentId": "agent-x",
+        "uuid": "x1", "message": {"role": "user", "content": "You are implementing Task 7."},
+    }
+    f = tmp_path / "s.jsonl"
+    f.write_text(json.dumps(entry) + "\n")
+    events = parse_jsonl(f)
+    msgs = [e for e in events if e.type == EventType.AGENT_MESSAGE]
+    assert len(msgs) == 1
+    assert msgs[0].data["role"] == "user"
+    assert msgs[0].data["text"] == "You are implementing Task 7."
+
+
+def test_parse_raw_dir_links_nested_spawn(tmp_path: Path):
+    # A spawns B in session; B spawns C in B's sidechain. The two-phase linker
+    # must connect C to B regardless of meta-file ordering.
+    raw = tmp_path
+    (raw / "session.jsonl").write_text(json.dumps({
+        "type": "assistant", "timestamp": "2026-06-18T12:00:00.000Z", "agentId": "main", "uuid": "m1",
+        "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "callB", "name": "Agent",
+             "input": {"subagent_type": "general-purpose", "description": "B"}}]},
+    }) + "\n")
+    sub = raw / "subagents"
+    sub.mkdir()
+    # B's sidechain contains the spawn of C
+    (sub / "agent-B.meta.json").write_text(json.dumps({"toolUseId": "callB", "agentType": "general-purpose"}))
+    (sub / "agent-B.jsonl").write_text(json.dumps({
+        "type": "assistant", "timestamp": "2026-06-18T12:00:01.000Z", "agentId": "B", "uuid": "b1",
+        "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "callC", "name": "Agent",
+             "input": {"subagent_type": "Explore", "description": "C"}}]},
+    }) + "\n")
+    (sub / "agent-C.meta.json").write_text(json.dumps({"toolUseId": "callC", "agentType": "Explore"}))
+    (sub / "agent-C.jsonl").write_text(json.dumps({
+        "type": "assistant", "timestamp": "2026-06-18T12:00:02.000Z", "agentId": "C", "uuid": "c1",
+        "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
+    }) + "\n")
+
+    events = parse_raw_dir(raw)
+    spawns = {e.data.get("tool_use_id"): e.data.get("child_agent_id") for e in events
+              if e.type == EventType.AGENT_SPAWN}
+    assert spawns["callB"] == "agent-B"
+    assert spawns["callC"] == "agent-C"  # nested spawn linked despite ordering

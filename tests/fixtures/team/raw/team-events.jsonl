@@ -1,0 +1,3 @@
+{"timestamp":"2026-06-18T12:00:05.000Z","path":"/x/teams/team1/inboxes/Mate.json","kind":"mailbox_snapshot","content":[{"from":"team-lead","summary":"please investigate bet 2"}]}
+{"timestamp":"2026-06-18T12:00:06.000Z","path":"/x/tasks/team1/1.json","kind":"task_snapshot","content":{"id":"1","subject":"Investigate bet 2","status":"in_progress","owner":"Mate"}}
+{"timestamp":"2026-06-18T12:00:07.000Z","path":"/x/tasks/team1/1.json","kind":"task_snapshot","content":{"id":"1","subject":"Investigate bet 2","status":"completed","owner":"Mate"}}
