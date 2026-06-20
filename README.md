@@ -1,5 +1,7 @@
 # Agent Anatomy
 
+[![CI](https://github.com/boxcounter/agent-anatomy/actions/workflows/ci.yml/badge.svg)](https://github.com/boxcounter/agent-anatomy/actions/workflows/ci.yml)
+
 剖析 Claude Code 多 agent 会话的工具，支持 sub-agent、agent team、workflow 三种协作模式。采集 session 的原始数据，产出统一事件流、交互式时间线、协作图，以及揭示协作机制的分析报告。
 
 ## 安装
@@ -47,7 +49,8 @@ uv run anatomy analyze --session-dir=<path-to-analysis-dir>
 ## 开发
 
 ```bash
-uv run pytest tests/ -v       # 运行测试
+uv sync --extra dev            # 安装开发依赖（pytest / ruff / pyright）
+uv run pytest tests/ -v        # 运行测试
 uv run ruff check src/ tests/  # Lint
 uv run pyright src/ tests/     # 类型检查
 ```
