@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/boxcounter/agent-anatomy/actions/workflows/ci.yml/badge.svg)](https://github.com/boxcounter/agent-anatomy/actions/workflows/ci.yml)
 
+[English](README.en.md) | **中文**
+
 剖析 Claude Code 多 agent 会话的工具，支持 sub-agent、agent team、workflow 三种协作模式。采集 session 的原始数据，产出统一事件流、交互式时间线、协作图，以及揭示协作机制的分析报告。
 
 ## 安装
