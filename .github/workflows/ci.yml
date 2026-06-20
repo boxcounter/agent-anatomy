@@ -7,7 +7,9 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # macOS runner: watch.py relies on select.kqueue (BSD/macOS-only), so both
+    # pyright and the watch tests require a Darwin platform.
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
