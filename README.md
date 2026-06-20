@@ -13,9 +13,9 @@ uv sync
 
 ## 命令
 
-### `collect` —— 事后采集 Sub-agent 模式 session
+### `collect` —— 事后采集 Sub-agent / Workflow 模式 session
 
-Session 结束后运行。拷贝 JSONL transcript 和 sub-agent sidechain 到统一目录。
+Session 结束后运行。拷贝 JSONL transcript、sub-agent sidechain，以及 Workflow 运行日志（`workflows/wf_*.json`，Workflow 模式的权威拓扑）到统一目录。
 
 ```bash
 uv run anatomy collect --session-id=<session-id>
@@ -40,11 +40,13 @@ uv run anatomy watch --team-name=<team-name>
 uv run anatomy analyze --session-dir=<path-to-analysis-dir>
 ```
 
-产出四个文件：
-- `events.jsonl` —— 统一事件流
+产出：
+- `report.html` —— 单文件 explainer（旗舰）：模式讲解 + 协作图 + 时间线 + 每个 agent 可点开的完整输出
+- `report.md` —— 同内容的 Markdown 版分析报告
 - `timeline.html` —— D3.js 交互式时间线
 - `graph.mermaid` —— 协作图（Mermaid 格式）
-- `report.md` —— 对比分析报告
+- `events.jsonl` —— 统一事件流
+- `agents/` —— 每个 agent 一个 Markdown 文件，完整未截断输出
 
 ## 开发
 

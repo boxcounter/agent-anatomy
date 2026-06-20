@@ -10,7 +10,7 @@ Three commands, clean separation:
 
 | Command | When | What |
 |---------|------|------|
-| `collect --session-id=X` | Post-session (Sub-agent mode) | Copies JSONL/meta/task/mailbox data into `analysis/raw/` |
+| `collect --session-id=X` | Post-session (Sub-agent / Workflow mode) | Copies JSONL/meta/task/mailbox data + workflow journals into `analysis/raw/` |
 | `watch --team-name=X` | During session (Agent Team mode) | kqueue-based realtime monitoring of mailbox/task file changes |
 | `analyze --session-dir=X` | After collect or watch | Parses raw data → unified events → timeline/graph/report |
 
@@ -18,6 +18,7 @@ Three commands, clean separation:
 - Collect and analyze are separated. Raw data is reusable; analysis logic is independently iterable.
 - kqueue (not eslogger) for watch — Agent Team writes are lock-serialized, so kqueue's event coalescing risk is negligible. No sudo required.
 - The JSONL transcript is the authoritative data source. All tool calls (SendMessage, TaskUpdate, Agent spawn) are recorded there. Mailbox and task files are just the implementation mechanism.
+- For **Workflow mode** the run journal (`workflows/wf_*.json`) is authoritative topology ground truth — the analog of a team's `config.json`. Its `workflowProgress[]` lists every spawned agent with its phase, label, model and usage; the orchestrator→phase→agent tree is rebuilt from it (a Workflow run records no `Agent`-tool spawn events).
 
 ## File map
 
@@ -37,7 +38,8 @@ src/agent_anatomy/
     timeline.py                    # build_timeline_data(), render_html(), render_template()
     templates/
         timeline.html.j2           # D3.js v7 interactive timeline (role-coloured swimlanes)
-        report.html.j2             # Single-file explainer: narrative + force graph + timeline
+        _timeline.js.j2            # shared timeline JS partial (role colours/legend)
+        report.html.j2             # Single-file explainer: narrative + Phases + force graph + timeline + per-agent drawers
 tests/
     conftest.py                    # fixtures_dir fixture
     fixtures/                      # Mock session data for unit tests
@@ -72,12 +74,20 @@ docs/
 ```
 
 All human-facing artifacts derive from one `Topology` (`roles.py`): every agent
-gets a role (lead / teammate / subagent / root) and a readable display name, the
-spawn tree is reconstructed, and the session is classified
-(Sub-agent / Agent Team / Hybrid) with the evidence recorded. The report reveals
-the *mechanism*, not just event counts: a mode primer, a "who is who" cast, the
-delegation tree, the shared task board (team) vs per-agent private to-do rollups
-(sub-agent), and the communication log.
+gets a role (lead / teammate / subagent / root / phase) and a readable display
+name, the spawn tree is reconstructed, and the session is classified
+(Sub-agent / Agent Team / Workflow / Hybrid) with the evidence recorded. The
+report reveals the *mechanism*, not just event counts: a mode primer, a "who is
+who" cast, the delegation tree, the shared task board (team) vs per-agent private
+to-do rollups (sub-agent) vs the phase rollup (workflow), and the communication log.
+
+**Workflow mode** (the Workflow tool): a deterministic orchestrator script fans
+out one-shot, context-isolated agents in ordered **phases**. There is no peer
+messaging or shared task board — it is sub-agent semantics at scale with scripted
+control flow. `roles.py` synthesizes a `phase:<title>` node per phase
+(`AgentRole.PHASE`) so the tree is `orchestrator → phase → agents`; the cast
+excludes phase nodes and surfaces them as a **Phases** rollup instead, and
+`report.html` folds the cast into a collapsible group per phase.
 
 ## Parsing details
 
@@ -89,6 +99,7 @@ The parser handles these JSONL content block types:
 | `SendMessage` | `message_send` | `from`, `to`, `summary`, `message_type` |
 | `TaskCreate` | `task_create` | `task_id` (backfilled from tool_result), `subject` |
 | `TaskUpdate` | `task_update` | `task_id`, `new_status`, `owner` |
+| `StructuredOutput` | folded into `agent_message` | a schema-returning agent's result lives in the tool_use *input* (no text block); rendered as a JSON code block into `text` so it reaches the per-agent drawer |
 | text blocks | `agent_message` | `role`, `content_summary` (truncated 200 chars, for compact displays), `text` (full untruncated output), `token_usage`, `tool_calls` |
 
 A turn's `content` may be a list of blocks **or a bare string** — sub-agent prompts (the instruction each agent receives, i.e. the `Agent` call's `prompt`) are stored as string content. The parser emits these as `agent_message` (role `user`) too, so an agent's transcript starts with its instruction rather than its first reply.
@@ -99,7 +110,9 @@ A turn's `content` may be a list of blocks **or a bare string** — sub-agent pr
 
 Task identity is mode-aware (`comparator._build_tasks`): in Agent Team mode tasks are a shared board keyed globally by id; in Sub-agent mode every agent reuses ids 1, 2, 3… for its own private to-do list, so tasks are keyed per-agent to avoid bogus cross-agent merges. Owner presence decides the hybrid case.
 
-Sidechain association works via `meta.json` → `toolUseId` matching, done in **two phases**: `parse_raw_dir` first parses session.jsonl plus *every* sidechain into one event set, then resolves `child_agent_id`. A spawn's `tool_use` call can live in any transcript (a sub-agent that spawns another records it in its own sidechain), so linking against a partially-loaded event set would orphan nested spawns.
+Sidechain association works via `meta.json` → `toolUseId` matching, done in **two phases**: `parse_raw_dir` first parses session.jsonl plus *every* sidechain into one event set, then resolves `child_agent_id`. A spawn's `tool_use` call can live in any transcript (a sub-agent that spawns another records it in its own sidechain), so linking against a partially-loaded event set would orphan nested spawns. Workflow runs nest their sidechains under `subagents/workflows/wf_*/` (with `agent-*.meta.json` that carry no `toolUseId`), so `parse_raw_dir` globs **recursively** (`rglob`) — the spawn tree comes from the journal, not from these metas.
+
+`workflows/wf_*.json` (copied by `collect`) is loaded via `parser.load_workflow_journals()` and passed to `build_topology` as **authoritative** Workflow topology — the phase grouping and orchestrator→phase→agent tree come from `workflowProgress[]`, and `comparator._build_phases` rolls the journal up into the Phases section.
 
 `team-config.json` (copied by `collect`) is loaded via `parser.load_team_config()` and passed to `build_topology` as **authoritative** role ground truth — the lead and named teammates come from `members[]` rather than heuristics. `parse_team_events` diffs `team-events.jsonl` snapshots **per file path** (mailboxes → message_send/read, task files → task_create/task_update); diffing against the globally-previous snapshot would compare unrelated files.
 
