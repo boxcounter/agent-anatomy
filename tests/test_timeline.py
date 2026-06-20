@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
-from analysis_tool.models import EventSource, EventType, UnifiedEvent
-from analysis_tool.timeline import build_timeline_data
+from agent_anatomy.models import EventSource, EventType, UnifiedEvent
+from agent_anatomy.timeline import build_timeline_data
 
 
 def test_build_timeline_data_groups_by_agent():

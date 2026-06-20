@@ -1,6 +1,6 @@
-# Agent Team Analysis Tool
+# Agent Anatomy
 
-分析 Claude Code Agent Team 会话的工具。采集多进程 session 的原始数据，产出统一事件流、交互式时间线、协作图和对比分析报告。
+剖析 Claude Code 多 agent 会话的工具，支持 sub-agent、agent team、workflow 三种协作模式。采集 session 的原始数据，产出统一事件流、交互式时间线、协作图，以及揭示协作机制的分析报告。
 
 ## 安装
 
@@ -16,7 +16,7 @@ uv sync
 Session 结束后运行。拷贝 JSONL transcript 和 sub-agent sidechain 到统一目录。
 
 ```bash
-uv run analysis-tool collect --session-id=<session-id>
+uv run anatomy collect --session-id=<session-id>
 
 # 查找 session ID
 ls ~/.claude/projects/*/
@@ -27,7 +27,7 @@ ls ~/.claude/projects/*/
 在启动 Agent Team session **之前**启动，Ctrl+C 停止。通过 kqueue 监控 mailbox 和 task 文件变更。
 
 ```bash
-uv run analysis-tool watch --team-name=<team-name>
+uv run anatomy watch --team-name=<team-name>
 ```
 
 ### `analyze` —— 生成分析报告
@@ -35,7 +35,7 @@ uv run analysis-tool watch --team-name=<team-name>
 从采集/监控的原始数据中生成分析产物。
 
 ```bash
-uv run analysis-tool analyze --session-dir=<path-to-analysis-dir>
+uv run anatomy analyze --session-dir=<path-to-analysis-dir>
 ```
 
 产出四个文件：

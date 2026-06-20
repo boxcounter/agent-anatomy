@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from analysis_tool.models import EventType, UnifiedEvent
+from agent_anatomy.models import EventType, UnifiedEvent
 
 
 @dataclass

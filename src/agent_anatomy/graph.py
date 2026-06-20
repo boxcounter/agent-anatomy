@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
-from analysis_tool.models import EventType, UnifiedEvent
-from analysis_tool.roles import AgentRole, Topology, canonical_id
+from agent_anatomy.models import EventType, UnifiedEvent
+from agent_anatomy.roles import AgentRole, Topology, canonical_id
 
 
 @dataclass

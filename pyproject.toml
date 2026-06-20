@@ -1,5 +1,5 @@
 [project]
-name = "analysis-tool"
+name = "agent-anatomy"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
@@ -15,7 +15,7 @@ dev = [
 ]
 
 [project.scripts]
-analysis-tool = "analysis_tool.cli:main"
+anatomy = "agent_anatomy.cli:main"
 
 [build-system]
 requires = ["hatchling"]

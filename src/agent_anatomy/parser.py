@@ -9,8 +9,8 @@ from typing import Any, cast
 
 import click
 
-from analysis_tool.errors import ParseError, RawDataNotFoundError
-from analysis_tool.models import EventSource, EventType, UnifiedEvent
+from agent_anatomy.errors import ParseError, RawDataNotFoundError
+from agent_anatomy.models import EventSource, EventType, UnifiedEvent
 
 # TaskCreate returns plain text like "Task #4 created successfully: <subject>"
 # — not JSON — so the id must be pulled out of the result text.

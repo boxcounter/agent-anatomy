@@ -1,6 +1,6 @@
 """Tests for error handling."""
 
-from analysis_tool.errors import (
+from agent_anatomy.errors import (
     AnalysisToolError,
     ParseError,
     RawDataNotFoundError,

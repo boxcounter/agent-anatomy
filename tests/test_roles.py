@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
-from analysis_tool.models import EventSource, EventType, UnifiedEvent
-from analysis_tool.roles import AgentRole, SessionMode, build_topology, canonical_id
+from agent_anatomy.models import EventSource, EventType, UnifiedEvent
+from agent_anatomy.roles import AgentRole, SessionMode, build_topology, canonical_id
 
 
 def _ev(agent_id: str, etype: EventType, data: dict[str, object], sec: int = 0) -> UnifiedEvent:

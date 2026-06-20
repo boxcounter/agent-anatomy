@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
-from analysis_tool.graph import build_collaboration_graph, to_mermaid
-from analysis_tool.models import EventSource, EventType, UnifiedEvent
+from agent_anatomy.graph import build_collaboration_graph, to_mermaid
+from agent_anatomy.models import EventSource, EventType, UnifiedEvent
 
 
 def make_msg_event(from_agent: str, to_agent: str, ts_offset: int = 0) -> UnifiedEvent:
@@ -47,7 +47,7 @@ def test_to_mermaid_generates_valid_syntax():
 
 
 def test_to_mermaid_with_topology_renders_spawn_edges_and_roles():
-    from analysis_tool.roles import build_topology
+    from agent_anatomy.roles import build_topology
 
     events = [
         UnifiedEvent.create(

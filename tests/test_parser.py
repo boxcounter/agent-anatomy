@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from analysis_tool.models import EventSource, EventType
-from analysis_tool.parser import parse_jsonl, parse_raw_dir
+from agent_anatomy.models import EventSource, EventType
+from agent_anatomy.parser import parse_jsonl, parse_raw_dir
 
 
 def test_parse_session_jsonl_yields_agent_spawn(fixtures_dir: Path):

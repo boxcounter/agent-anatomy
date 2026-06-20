@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path
 
-from analysis_tool.errors import SessionNotFoundError
+from agent_anatomy.errors import SessionNotFoundError
 
 
 def find_session_dir(session_id: str) -> Path:

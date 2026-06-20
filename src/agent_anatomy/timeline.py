@@ -3,8 +3,8 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
-from analysis_tool.models import EventType, UnifiedEvent
-from analysis_tool.roles import AgentRole, Topology, build_topology, canonical_id
+from agent_anatomy.models import EventType, UnifiedEvent
+from agent_anatomy.roles import AgentRole, Topology, build_topology, canonical_id
 
 _ROLE_ORDER = {
     AgentRole.LEAD: 0,
@@ -153,7 +153,7 @@ def render_template(
     context: dict[str, Any], template_dir: Path, template_name: str, output_path: Path
 ) -> None:
     """Render any Jinja2 template in template_dir to output_path."""
-    from analysis_tool.comparator import humantime
+    from agent_anatomy.comparator import humantime
 
     env = Environment(loader=FileSystemLoader(str(template_dir)))
     env.filters["humantime"] = humantime  # seconds -> "12h 21m" in templates

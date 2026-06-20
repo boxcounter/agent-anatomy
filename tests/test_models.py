@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from analysis_tool.models import EventSource, EventType, UnifiedEvent
+from agent_anatomy.models import EventSource, EventType, UnifiedEvent
 
 
 def test_unified_event_construction():

@@ -6,16 +6,16 @@ from pathlib import Path
 import click
 from jinja2 import TemplateNotFound
 
-from analysis_tool.collect import collect_session, find_session_dir
-from analysis_tool.errors import (
+from agent_anatomy.collect import collect_session, find_session_dir
+from agent_anatomy.errors import (
     AnalysisToolError,
     RawDataNotFoundError,
     SessionNotFoundError,
     TemplateNotFoundError,
     WatchTargetNotFoundError,
 )
-from analysis_tool.models import UnifiedEvent
-from analysis_tool.parser import parse_raw_dir
+from agent_anatomy.models import UnifiedEvent
+from agent_anatomy.parser import parse_raw_dir
 
 
 def _debug() -> bool:
@@ -30,7 +30,10 @@ def _debug() -> bool:
 @click.option("--debug", is_flag=True, default=False, help="Show full tracebacks on error")
 @click.pass_context
 def main(ctx: click.Context, debug: bool) -> None:  # type: ignore[no-any-unimported]
-    """Claude Code Agent Team session analysis tool."""
+    """Agent Anatomy — analyze Claude Code multi-agent sessions.
+
+    Supports sub-agent, agent team, and workflow collaboration modes.
+    """
     ctx.ensure_object(dict)
     ctx.obj["debug"] = debug
 
@@ -172,7 +175,7 @@ def _analyze(session_dir: str) -> None:
             f.write(json.dumps(_event_to_dict(event), default=str) + "\n")
 
     # Keystone: one topology drives every artifact, so they never disagree.
-    from analysis_tool.comparator import (
+    from agent_anatomy.comparator import (
         agent_output_markdown,
         build_agent_outputs,
         build_session_view,
@@ -180,7 +183,7 @@ def _analyze(session_dir: str) -> None:
         session_summary,
         view_to_dict,
     )
-    from analysis_tool.parser import load_team_config, load_workflow_journals
+    from agent_anatomy.parser import load_team_config, load_workflow_journals
     team_config = load_team_config(raw_dir)  # authoritative roles, when present
     workflow_journals = load_workflow_journals(raw_dir)  # authoritative for Workflow mode
     view = build_session_view(events, team_config, workflow_journals)
@@ -205,7 +208,7 @@ def _analyze(session_dir: str) -> None:
         for detail in view.anomalies:
             click.echo(f"  {detail}")
 
-    from analysis_tool.graph import build_collaboration_graph, to_force_data, to_mermaid
+    from agent_anatomy.graph import build_collaboration_graph, to_force_data, to_mermaid
     graph = build_collaboration_graph(events)
     mermaid = to_mermaid(graph, topology)
     graph_file = analysis_dir / "graph.mermaid"
@@ -225,7 +228,7 @@ def _analyze(session_dir: str) -> None:
         (agents_dir / fname).write_text(agent_output_markdown(o))
     click.echo(f"Full agent outputs written to {agents_dir}/ ({len(outputs)} files)")
 
-    from analysis_tool.timeline import build_timeline_data, render_html, render_template
+    from agent_anatomy.timeline import build_timeline_data, render_html, render_template
     template_dir = Path(__file__).parent / "templates"
     timeline_data = build_timeline_data(events, topology)
     timeline_file = analysis_dir / "timeline.html"
@@ -285,7 +288,7 @@ def watch(team_name: str, output_dir: str | None) -> None:
 
 
 def _watch(team_name: str, output_dir: str | None) -> None:
-    from analysis_tool.watch import watch_teams
+    from agent_anatomy.watch import watch_teams
 
     output_path = Path(output_dir) if output_dir else Path("analysis")
 

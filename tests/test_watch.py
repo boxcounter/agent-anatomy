@@ -3,7 +3,7 @@ import threading
 import time
 from pathlib import Path
 
-from analysis_tool.watch import KqueueWatcher
+from agent_anatomy.watch import KqueueWatcher
 
 
 def test_kqueue_watcher_detects_file_write(tmp_path: Path):

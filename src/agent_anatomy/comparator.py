@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, cast
 
-from analysis_tool.models import EventType, UnifiedEvent
-from analysis_tool.roles import AgentProfile, AgentRole, SessionMode, Topology, build_topology, canonical_id
+from agent_anatomy.models import EventType, UnifiedEvent
+from agent_anatomy.roles import AgentProfile, AgentRole, SessionMode, Topology, build_topology, canonical_id
 
 
 @dataclass

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
-from analysis_tool.models import EventSource, EventType, UnifiedEvent
-from analysis_tool.state_machine import (
+from agent_anatomy.models import EventSource, EventType, UnifiedEvent
+from agent_anatomy.state_machine import (
     build_state_machines,
     detect_anomalies,
 )

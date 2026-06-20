@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from analysis_tool.collect import collect_session
-from analysis_tool.comparator import build_session_view, session_summary
-from analysis_tool.parser import load_workflow_journals, parse_raw_dir
-from analysis_tool.roles import AgentRole, SessionMode
+from agent_anatomy.collect import collect_session
+from agent_anatomy.comparator import build_session_view, session_summary
+from agent_anatomy.parser import load_workflow_journals, parse_raw_dir
+from agent_anatomy.roles import AgentRole, SessionMode
 
 
 def _raw(fixtures_dir: Path) -> Path:

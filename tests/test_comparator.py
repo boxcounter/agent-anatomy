@@ -1,14 +1,14 @@
 from datetime import UTC, datetime
 
-from analysis_tool.comparator import (
+from agent_anatomy.comparator import (
     ComparisonReport,
     agent_output_markdown,
     build_agent_outputs,
     compare,
     session_summary,
 )
-from analysis_tool.models import EventSource, EventType, UnifiedEvent
-from analysis_tool.roles import build_topology
+from agent_anatomy.models import EventSource, EventType, UnifiedEvent
+from agent_anatomy.roles import build_topology
 
 
 def test_compare_returns_report():

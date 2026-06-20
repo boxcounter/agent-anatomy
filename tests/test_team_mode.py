@@ -3,9 +3,9 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from analysis_tool.comparator import build_session_view, session_summary
-from analysis_tool.parser import load_team_config, parse_raw_dir, parse_team_events
-from analysis_tool.roles import AgentRole, SessionMode
+from agent_anatomy.comparator import build_session_view, session_summary
+from agent_anatomy.parser import load_team_config, parse_raw_dir, parse_team_events
+from agent_anatomy.roles import AgentRole, SessionMode
 
 
 def test_team_fixture_end_to_end(fixtures_dir: Path):
@@ -88,8 +88,8 @@ def test_parse_team_events_diffs_mailboxes_per_path(tmp_path: Path):
 
 def test_build_topology_team_config_only(tmp_path: Path):
     # config presence alone should classify roles even with no message evidence.
-    from analysis_tool.models import EventSource, EventType, UnifiedEvent
-    from analysis_tool.roles import build_topology
+    from agent_anatomy.models import EventSource, EventType, UnifiedEvent
+    from agent_anatomy.roles import build_topology
 
     events = [
         UnifiedEvent.create(

@@ -1,4 +1,4 @@
-# Agent Team Analysis Tool — Project Context
+# Agent Anatomy — Project Context
 
 ## What this is
 
@@ -23,7 +23,7 @@ Three commands, clean separation:
 
 ```
 pyproject.toml                     # uv, ruff, pyright, pytest config
-src/analysis_tool/
+src/agent_anatomy/
     __init__.py
     models.py                      # UnifiedEvent, EventType, EventSource (frozen event model)
     cli.py                         # Click entry point (collect/watch/analyze commands)
@@ -110,7 +110,7 @@ uv sync                           # Install deps
 uv run pytest tests/ -v           # Run tests
 uv run ruff check src/ tests/     # Lint (E, F, I, N, W, UP rules)
 uv run pyright src/ tests/        # Type check (strict mode)
-uv run analysis-tool --help       # CLI help
+uv run anatomy --help       # CLI help
 ```
 
 ## Code conventions

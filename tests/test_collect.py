@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from analysis_tool.collect import collect_session
+from agent_anatomy.collect import collect_session
 
 
 def _mock_find_session_dir(path: Path):
@@ -34,7 +34,7 @@ def test_collect_session_copies_session_jsonl(
 
     # Replace find_session_dir to return our mock
     monkeypatch.setattr(
-        "analysis_tool.collect.find_session_dir",
+        "agent_anatomy.collect.find_session_dir",
         _mock_find_session_dir(session_dir),
     )
 
