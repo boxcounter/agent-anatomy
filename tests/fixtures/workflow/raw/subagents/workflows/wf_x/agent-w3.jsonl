@@ -1,0 +1,2 @@
+{"parentUuid":null,"isSidechain":true,"agentId":"w3","message":{"role":"user","content":"Search angle B."},"uuid":"00000000-0000-0000-0000-0000000000c1","timestamp":"2026-06-19T17:00:16.000Z","type":"user"}
+{"parentUuid":null,"isSidechain":true,"agentId":"w3","message":{"role":"assistant","content":[{"type":"text","text":"Found 3 sources for angle B"}],"usage":{"input_tokens":220,"output_tokens":110}},"uuid":"00000000-0000-0000-0000-0000000000c2","timestamp":"2026-06-19T17:00:22.000Z","type":"assistant"}

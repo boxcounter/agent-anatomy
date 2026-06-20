@@ -1,6 +1,8 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false
 import json
+import re
 import uuid
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -9,6 +11,10 @@ import click
 
 from analysis_tool.errors import ParseError, RawDataNotFoundError
 from analysis_tool.models import EventSource, EventType, UnifiedEvent
+
+# TaskCreate returns plain text like "Task #4 created successfully: <subject>"
+# — not JSON — so the id must be pulled out of the result text.
+_TASK_CREATED_RE = re.compile(r"Task #(\d+) created", re.IGNORECASE)
 
 
 def parse_jsonl(path: Path) -> list[UnifiedEvent]:
@@ -31,27 +37,39 @@ def parse_jsonl(path: Path) -> list[UnifiedEvent]:
                 click.echo(f"Warning: skipping malformed JSON on line {line_num} of {path}: {exc}", err=True)
                 continue
 
-            # Scan tool_result blocks for task IDs (from TaskCreate/TaskUpdate results)
+            # Scan tool_result blocks for task IDs (from TaskCreate/TaskUpdate results).
+            # Only list-form content carries tool_result blocks; string-form content
+            # (e.g. sub-agent prompts) has none — but must still reach the entry
+            # parser below, so don't `continue` past it here.
             raw_msg = entry.get("message", {})
-            if not isinstance(raw_msg, dict):
-                continue
-            raw_cont = raw_msg.get("content", [])
-            if not isinstance(raw_cont, list):
-                continue
-            for block in raw_cont:
+            raw_cont = raw_msg.get("content", []) if isinstance(raw_msg, dict) else []
+            for block in (raw_cont if isinstance(raw_cont, list) else []):
                 if isinstance(block, dict) and block.get("type") == "tool_result":
                     tool_use_id: str = block.get("tool_use_id", "")
-                    result_content: Any = block.get("content", [])
-                    if not isinstance(result_content, list):
+                    if not tool_use_id:
                         continue
-                    for rc in result_content:
-                        if isinstance(rc, dict) and rc.get("type") == "text":
-                            try:
-                                result_data = json.loads(rc.get("text", "{}"))  # type: ignore[reportUnknownArgumentType]
-                                if "id" in result_data and tool_use_id:
-                                    tool_result_task_ids[tool_use_id] = result_data["id"]
-                            except (json.JSONDecodeError, TypeError):
-                                pass
+                    # tool_result content is either a plain string (e.g. the
+                    # TaskCreate "Task #N created…" message) or a list of blocks.
+                    result_content: Any = block.get("content", [])
+                    texts: list[str] = []
+                    if isinstance(result_content, str):
+                        texts.append(result_content)
+                    elif isinstance(result_content, list):
+                        for rc in result_content:
+                            if isinstance(rc, dict) and rc.get("type") == "text":
+                                texts.append(cast(str, rc.get("text", "") or ""))
+                    for text_val in texts:
+                        try:
+                            result_data = json.loads(text_val or "{}")  # type: ignore[reportUnknownArgumentType]
+                            if "id" in result_data:
+                                tool_result_task_ids[tool_use_id] = result_data["id"]
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                        # Fallback: TaskCreate result is plain text "Task #N created…"
+                        if tool_use_id not in tool_result_task_ids:
+                            m = _TASK_CREATED_RE.search(text_val)
+                            if m:
+                                tool_result_task_ids[tool_use_id] = m.group(1)
 
             parsed = _parse_jsonl_entry(entry)
             events.extend(parsed)
@@ -96,6 +114,32 @@ def _parse_jsonl_entry(entry: dict[str, Any]) -> list[UnifiedEvent]:
         return events
     message = cast(dict[str, Any], message)
     content: Any = message.get("content", [])
+
+    # A turn's content may be a bare string instead of a list of blocks — this
+    # is how sub-agent prompts (the instruction each agent is given) and other
+    # plain-text turns are stored. Emit it as a text message so it isn't lost.
+    is_meta = bool(entry.get("isMeta", False))
+
+    if isinstance(content, str):
+        text = content
+        if text.strip():
+            events.append(UnifiedEvent.create(
+                timestamp=ts,
+                agent_id=agent_id,
+                source=EventSource.TRANSCRIPT,
+                type=EventType.AGENT_MESSAGE,
+                data={
+                    "role": str(message.get("role", "unknown")),
+                    "content_summary": text[:200],
+                    "text": text,
+                    "is_meta": is_meta,
+                    "token_usage": message.get("usage", {}),
+                    "tool_calls": [],
+                },
+                parent_id=parent_id,
+            ))
+        return events
+
     if not isinstance(content, list):
         return events
     content = cast(list[dict[str, Any]], content)
@@ -180,6 +224,7 @@ def _parse_jsonl_entry(entry: dict[str, Any]) -> list[UnifiedEvent]:
             for b in content
             if isinstance(b, dict) and b.get("type") == "text"
         ]
+        full_text = "\n\n".join(p for p in text_parts if p)
         summary = " ".join(text_parts)[:200] if text_parts else ""
 
         if summary:
@@ -196,6 +241,8 @@ def _parse_jsonl_entry(entry: dict[str, Any]) -> list[UnifiedEvent]:
                 data={
                     "role": str(message.get("role", "unknown")),
                     "content_summary": summary,
+                    "text": full_text,  # full untruncated text — the authoritative store
+                    "is_meta": is_meta,
                     "token_usage": message.get("usage", {}),
                     "tool_calls": tool_call_names,
                 },
@@ -209,48 +256,62 @@ def _parse_jsonl_entry(entry: dict[str, Any]) -> list[UnifiedEvent]:
 
 
 def parse_raw_dir(raw_dir: Path) -> list[UnifiedEvent]:
-    """Parse all raw data in a session analysis/raw directory into unified events."""
+    """Parse all raw data in a session analysis/raw directory into unified events.
+
+    Linking is done in two phases. A spawn's `tool_use` call may live in *any*
+    transcript — a sub-agent that spawns another sub-agent records the call in
+    its own sidechain. So we first parse session.jsonl plus *every* sidechain
+    into one complete event set, then resolve `child_agent_id` against it. (An
+    earlier version linked while interleaving sidechain parsing in filename
+    order, so nested spawns whose parent sidechain wasn't loaded yet were
+    silently orphaned.)
+    """
     all_events: list[UnifiedEvent] = []
 
     session_jsonl = raw_dir / "session.jsonl"
     if not session_jsonl.exists():
         raise RawDataNotFoundError(str(raw_dir))
 
+    # Phase 1: parse session + all sidechains into one complete event set.
     all_events.extend(parse_jsonl(session_jsonl))
 
-    # 2. Parse subagent sidechains
     subagents_dir = raw_dir / "subagents"
+    tool_use_to_child: dict[str, str] = {}
     if subagents_dir.is_dir():
-        for meta_file in sorted(subagents_dir.glob("*.meta.json")):
+        # rglob (not glob): Sub-agent mode stores meta/transcripts flat, but
+        # Workflow mode nests them under workflows/wf_<id>/. Resolve each
+        # sidechain jsonl relative to its own meta's directory.
+        for meta_file in sorted(subagents_dir.rglob("*.meta.json")):
             meta = json.loads(meta_file.read_text())
             tool_use_id = meta.get("toolUseId", "")
-            # meta file: "agent-a0.meta.json" -> agent_id: "agent-a0"
+            # meta file: "agent-a0.meta.json" -> agent_id: "agent-a0".
+            # Workflow meta carries no toolUseId, so no spawn link is recorded
+            # here — the spawn tree is rebuilt from the workflow journal instead.
             sidechain_stem = meta_file.name.replace(".meta.json", "")
-            agent_id = sidechain_stem
+            if tool_use_id:
+                tool_use_to_child[tool_use_id] = sidechain_stem
 
-            # Match against existing agent_spawn events and update child_agent_id
-            for event in all_events:
-                if (
-                    event.type == EventType.AGENT_SPAWN
-                    and event.data.get("tool_use_id") == tool_use_id
-                ):
-                    idx = all_events.index(event)
-                    all_events[idx] = UnifiedEvent.create(
-                        timestamp=event.timestamp,
-                        agent_id=event.agent_id,
-                        source=event.source,
-                        type=event.type,
-                        data={**event.data, "child_agent_id": agent_id},
-                        parent_id=event.parent_id,
-                    )
-
-            # Parse the sidechain JSONL
-            sidechain_jsonl = subagents_dir / f"{sidechain_stem}.jsonl"
+            sidechain_jsonl = meta_file.parent / f"{sidechain_stem}.jsonl"
             if sidechain_jsonl.exists():
-                sidechain_events = parse_jsonl(sidechain_jsonl)
-                all_events.extend(sidechain_events)
+                all_events.extend(parse_jsonl(sidechain_jsonl))
 
-    # 3. Parse team-events if present
+    # Phase 2: resolve child_agent_id against the complete event set.
+    if tool_use_to_child:
+        for i, event in enumerate(all_events):
+            if event.type != EventType.AGENT_SPAWN:
+                continue
+            child = tool_use_to_child.get(event.data.get("tool_use_id", ""))
+            if child:
+                all_events[i] = UnifiedEvent.create(
+                    timestamp=event.timestamp,
+                    agent_id=event.agent_id,
+                    source=event.source,
+                    type=event.type,
+                    data={**event.data, "child_agent_id": child},
+                    parent_id=event.parent_id,
+                )
+
+    # Parse team-events if present
     team_events_file = raw_dir / "team-events.jsonl"
     if team_events_file.exists():
         all_events.extend(parse_team_events(team_events_file))
@@ -261,52 +322,132 @@ def parse_raw_dir(raw_dir: Path) -> list[UnifiedEvent]:
     return all_events
 
 
+def load_team_config(raw_dir: Path) -> dict[str, Any] | None:
+    """Load the collected team config.json (authoritative member/role list)."""
+    config_file = raw_dir / "team-config.json"
+    if not config_file.exists():
+        return None
+    try:
+        data = json.loads(config_file.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def load_workflow_journals(raw_dir: Path) -> list[Mapping[str, object]]:
+    """Load collected Workflow run journals (raw/workflows/wf_*.json).
+
+    Each journal is authoritative topology ground truth for a Workflow-mode run
+    — its `workflowProgress` lists every spawned agent with its phase, label,
+    model and usage. Mirrors `load_team_config`. Returns [] when absent.
+    """
+    workflows_dir = raw_dir / "workflows"
+    if not workflows_dir.is_dir():
+        return []
+    journals: list[Mapping[str, object]] = []
+    for f in sorted(workflows_dir.glob("*.json")):
+        try:
+            data = json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(data, dict):
+            journals.append(cast(Mapping[str, object], data))
+    return journals
+
+
 def parse_team_events(path: Path) -> list[UnifiedEvent]:
-    """Parse team-events.jsonl and diff consecutive snapshots to find message_read events."""
+    """Parse team-events.jsonl, diffing snapshots *per file path*.
+
+    Snapshots of many mailboxes and task files are interleaved in one stream, so
+    state must be tracked per path (not against the globally-previous snapshot,
+    which could belong to a different file). Mailboxes yield message_send /
+    message_read; task files yield task_create / task_update.
+    """
     events: list[UnifiedEvent] = []
-    snapshots: list[dict[str, Any]] = []
+    last_mailbox: dict[str, list[dict[str, Any]]] = {}
+    last_task: dict[str, tuple[str, str]] = {}  # path -> (status, owner)
+    seen_task: set[str] = set()
 
     with open(path) as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
-            snapshots.append(json.loads(line))
+            snap = json.loads(line)
+            ts = datetime.fromisoformat(snap["timestamp"].replace("Z", "+00:00"))
+            kind = snap.get("kind")
+            spath = str(snap.get("path", ""))
+            content = snap.get("content")
 
-    for i, snap in enumerate(snapshots):
-        ts = datetime.fromisoformat(snap["timestamp"].replace("Z", "+00:00"))
+            if kind == "mailbox_snapshot" and isinstance(content, list):
+                curr = cast(list[dict[str, Any]], content)
+                owner = Path(spath).stem
+                prev = last_mailbox.get(spath)
+                if prev is None:
+                    for msg in curr:
+                        events.append(UnifiedEvent.create(
+                            timestamp=ts,
+                            agent_id=owner,
+                            source=EventSource.TEAM_EVENTS,
+                            type=EventType.MESSAGE_SEND,
+                            data={
+                                "from": msg.get("from", ""),
+                                "to": owner,
+                                "summary": msg.get("summary", ""),
+                                "message_type": "message",
+                            },
+                        ))
+                else:
+                    _diff_mailbox(prev, curr, ts, spath, events)
+                last_mailbox[spath] = curr
 
-        if i == 0 and snap.get("kind") == "mailbox_snapshot":
-            content = snap.get("content", [])
-            if isinstance(content, list):
-                content = cast(list[dict[str, Any]], content)
-                for msg in content:
-                    events.append(UnifiedEvent.create(
-                        timestamp=ts,
-                        agent_id=str(Path(snap["path"]).stem),
-                        source=EventSource.TEAM_EVENTS,
-                        type=EventType.MESSAGE_SEND,
-                        data={
-                            "from": msg.get("from", ""),
-                            "to": Path(snap["path"]).stem,
-                            "summary": msg.get("summary", ""),
-                            "message_type": "message",
-                        },
-                    ))
-
-        if i > 0:
-            prev = snapshots[i - 1]
-            if snap.get("kind") == "mailbox_snapshot" and prev.get("kind") == "mailbox_snapshot":
-                raw_prev = prev.get("content", [])
-                raw_curr = snap.get("content", [])
-                if isinstance(raw_prev, list) and isinstance(raw_curr, list):
-                    _diff_mailbox(
-                        cast(list[dict[str, Any]], raw_prev),
-                        cast(list[dict[str, Any]], raw_curr),
-                        ts, snap["path"], events,
-                    )
+            elif kind == "task_snapshot" and isinstance(content, dict):
+                _diff_task(
+                    cast(dict[str, Any], content), ts, spath, events, last_task, seen_task
+                )
 
     return events
+
+
+def _diff_task(
+    task: dict[str, Any],
+    ts: datetime,
+    path: str,
+    events: list[UnifiedEvent],
+    last_task: dict[str, tuple[str, str]],
+    seen_task: set[str],
+) -> None:
+    """Turn a task file snapshot into create/update events on first sight or change."""
+    tid = str(task.get("id", ""))
+    if not tid:
+        return
+    status = str(task.get("status", ""))
+    owner = str(task.get("owner", ""))
+    actor = owner or "team"  # the watcher sees file state, not the author
+
+    if path not in seen_task:
+        seen_task.add(path)
+        events.append(UnifiedEvent.create(
+            timestamp=ts,
+            agent_id=actor,
+            source=EventSource.TEAM_EVENTS,
+            type=EventType.TASK_CREATE,
+            data={"task_id": tid, "tool_use_id": "", "subject": str(task.get("subject", "")),
+                  "description": str(task.get("description", ""))},
+        ))
+        last_task[path] = ("pending", "")
+
+    prev_status, prev_owner = last_task.get(path, ("pending", ""))
+    if (status, owner) != (prev_status, prev_owner):
+        events.append(UnifiedEvent.create(
+            timestamp=ts,
+            agent_id=actor,
+            source=EventSource.TEAM_EVENTS,
+            type=EventType.TASK_UPDATE,
+            data={"task_id": tid, "tool_use_id": "", "new_status": status,
+                  "old_status": prev_status, "owner": owner},
+        ))
+        last_task[path] = (status, owner)
 
 
 def _diff_mailbox(

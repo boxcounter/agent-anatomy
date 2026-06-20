@@ -1,0 +1,1 @@
+{"type":"assistant","timestamp":"2026-06-19T17:00:00.000Z","sessionId":"11111111-1111-1111-1111-111111111111","uuid":"s1","message":{"role":"assistant","content":[{"type":"text","text":"Running the deep-research workflow."},{"type":"tool_use","id":"wf_call_1","name":"Workflow","input":{"name":"deep-research"}}]}}

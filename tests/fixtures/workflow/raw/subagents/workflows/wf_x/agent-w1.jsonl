@@ -1,0 +1,2 @@
+{"parentUuid":null,"isSidechain":true,"agentId":"w1","message":{"role":"user","content":"Decompose the question into search angles."},"uuid":"00000000-0000-0000-0000-0000000000a1","timestamp":"2026-06-19T17:00:05.000Z","type":"user"}
+{"parentUuid":null,"isSidechain":true,"agentId":"w1","message":{"role":"assistant","content":[{"type":"text","text":"Angles: A, B, C"}],"usage":{"input_tokens":100,"output_tokens":50}},"uuid":"00000000-0000-0000-0000-0000000000a2","timestamp":"2026-06-19T17:00:10.000Z","type":"assistant"}

@@ -1,0 +1,138 @@
+<script>
+// Shared timeline renderer. The host page sets window.TL = {agents, events,
+// spawnLinks, timeAnchors} and provides a #timeline mount. x-axis is event
+// order (idle time compressed); horizontal zoom/pan via d3.zoom.
+(function () {
+  const TL = window.TL || {};
+  const agents = TL.agents || [], events = TL.events || [];
+  const spawnLinks = TL.spawnLinks || [], anchors = TL.timeAnchors || [];
+  const mount = document.getElementById("timeline");
+  if (!mount || !agents.length || typeof d3 === "undefined") return;
+
+  const roleColor = { lead:"#d32f2f", root:"#455a64", phase:"#f59e0b", teammate:"#1976d2", subagent:"#388e3c", unknown:"#9e9e9e" };
+  const typeColor = { agent_spawn:"#2e7d32", agent_complete:"#c62828", message_send:"#1565c0",
+                      message_read:"#0277bd", task_create:"#ef6c00", task_update:"#f9a825", agent_message:"#9e9e9e" };
+  const fmt = s => { s = Math.round(s); const h=(s/3600|0), m=((s%3600)/60|0), x=s%60;
+                     return h ? `${h}h${m}m` : (m ? `${m}m${x}s` : `${x}s`); };
+  const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+  let tip = document.getElementById("tl-tooltip");
+  if (!tip) { tip = document.createElement("div"); tip.id = "tl-tooltip"; tip.className = "tooltip"; document.body.appendChild(tip); }
+  const tipSel = d3.select(tip);
+  const show = (e, html) => tipSel.style("opacity",1).style("left",(e.pageX+12)+"px").style("top",(e.pageY-10)+"px").html(html);
+  const hide = () => tipSel.style("opacity",0);
+
+  const rowH = 22, margin = { top:36, right:30, bottom:18, left:250 };
+  const innerW = Math.max((mount.clientWidth || 900) - margin.left - margin.right, 480);
+  const innerH = agents.length * rowH;
+
+  const svg = d3.select(mount).append("svg")
+    .attr("width", innerW + margin.left + margin.right)
+    .attr("height", innerH + margin.top + margin.bottom);
+  svg.append("defs").append("clipPath").attr("id","tl-clip").append("rect")
+    .attr("x",0).attr("y",-6).attr("width",innerW).attr("height",innerH+12);
+  const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+  const x0 = d3.scaleLinear().domain([0,100]).range([0,innerW]);
+  let x = x0;
+
+  // fixed (non-zooming) lane bands + agent labels
+  g.selectAll(".lane").data(agents).enter().append("rect")
+    .attr("x",-margin.left).attr("y",(d,i)=>i*rowH).attr("width",innerW+margin.left).attr("height",rowH)
+    .attr("fill",d=>roleColor[d.role]||"#999").attr("opacity",0.05);
+  g.selectAll(".lbl").data(agents).enter().append("text")
+    .attr("x",-10).attr("y",(d,i)=>i*rowH+rowH/2).attr("text-anchor","end").attr("dominant-baseline","middle")
+    .attr("font-size","11px").attr("font-weight","600").attr("fill",d=>roleColor[d.role]||"#555")
+    .style("cursor","pointer")
+    .text(d => d.label.length>34 ? d.label.slice(0,33)+"…" : d.label)
+    .on("click",(e,d)=>{ if (window.openAgent) window.openAgent(d.id); })
+    .append("title").text(d => d.role + ": " + d.label);
+
+  const axisG = g.append("g");
+  const plot = g.append("g").attr("clip-path","url(#tl-clip)");
+
+  const curves = plot.selectAll(".cv").data(spawnLinks).enter().append("path")
+    .attr("fill","none").attr("stroke","#43a047").attr("stroke-width",1)
+    .attr("stroke-dasharray","3,2").attr("opacity",0.7);
+  const bars = plot.selectAll(".bar").data(agents).enter().append("rect")
+    .attr("rx",3).attr("y",(d,i)=>i*rowH+4).attr("height",rowH-8)
+    .attr("fill",d=>roleColor[d.role]||"#999").attr("opacity",0.30).style("cursor","pointer")
+    .on("mouseover",(e,d)=>show(e,`<strong>${esc(d.label)}</strong><br>${d.role} · ${d.count} events`
+        + `<br>active ${fmt(d.first_off)}–${fmt(d.last_off)}<br><small>click to read full output</small>`))
+    .on("mouseout",hide)
+    .on("click",(e,d)=>{ if (window.openAgent) window.openAgent(d.id); });
+  const ticks = plot.selectAll(".tk").data(events).enter().append("circle")
+    .attr("r",2.6).attr("cy",d=>d.agent_row*rowH+rowH/2).attr("fill",d=>typeColor[d.type]||"#999")
+    .on("mouseover",(e,d)=>show(e,`<strong>${d.type}</strong> · +${fmt(d.offset_seconds)}<br>${esc(d.data_summary)}`))
+    .on("mouseout",hide);
+
+  function redraw() {
+    bars.attr("x",d=>x(d.first_pct)).attr("width",d=>Math.max(x(d.last_pct)-x(d.first_pct),3));
+    ticks.attr("cx",d=>x(d.seq_pct));
+    curves.attr("d",d=>{ const x1=x(d.parent_pct), y1=d.parent_row*rowH+rowH/2,
+      x2=x(d.child_pct), y2=d.child_row*rowH+rowH/2, mx=(x1+x2)/2;
+      return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`; });
+    const sel = axisG.selectAll(".anchor").data(anchors);
+    const ent = sel.enter().append("g").attr("class","anchor");
+    ent.append("line").attr("y1",-4).attr("y2",innerH).attr("stroke","#e0e0e0");
+    ent.append("text").attr("y",-8).attr("text-anchor","middle").attr("font-size","10px").attr("fill","#999");
+    const all = ent.merge(sel);
+    all.attr("transform",d=>`translate(${x(d.pct)},0)`)
+       .style("display",d=>{ const px=x(d.pct); return (px>=-1 && px<=innerW+1) ? null : "none"; });
+    all.select("text").text(d=>d.label);
+  }
+  redraw();
+
+  const zoom = d3.zoom().scaleExtent([1,60])
+    .translateExtent([[0,0],[innerW,innerH]]).extent([[0,0],[innerW,innerH]])
+    .on("zoom",(ev)=>{ x = ev.transform.rescaleX(x0); redraw(); });
+  svg.call(zoom).style("cursor","ew-resize");
+
+  // ---- Legend + explanation, placed ABOVE the chart so it reads first ----
+  let legendMount = document.getElementById("timeline-legend");
+  if (!legendMount) {
+    legendMount = document.createElement("div");
+    legendMount.id = "timeline-legend";
+    mount.parentNode.insertBefore(legendMount, mount);  // sits above the chart
+  }
+  const L = d3.select(legendMount);
+
+  L.append("div").attr("style","font-size:12.5px;color:#444;margin:2px 0 8px;line-height:1.5;")
+    .html("Each <b>bar</b> is one agent's active window (first→last event), coloured by role. "
+        + "The <b>dots</b> on a bar are that agent's individual events, coloured by type (key below). "
+        + "Green curves trace a spawn to where the child first acts. "
+        + "X-axis is <b>event order</b> (idle time compressed); axis labels show elapsed wall-clock time. "
+        + "Scroll/pinch to zoom, drag to pan, click a bar to read the agent's full output.");
+
+  const typeLabel = {
+    agent_spawn: "spawn (delegated a sub-agent)",
+    agent_complete: "agent finished",
+    message_send: "message sent",
+    message_read: "message read",
+    task_create: "task created",
+    task_update: "task status change",
+    agent_message: "agent turn (a message: instruction, reasoning, or output)",
+  };
+  const roleLabel = { lead:"lead", root:"root / main", phase:"phase", teammate:"teammate", subagent:"sub-agent", unknown:"unknown" };
+
+  function legendRow(title, items) {
+    const row = L.append("div")
+      .attr("style","display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:6px;font-size:12px;color:#444;");
+    row.append("span").attr("style","font-weight:700;min-width:90px;").text(title);
+    items.forEach(it => {
+      const s = row.append("span").attr("style","display:inline-flex;align-items:center;gap:6px;");
+      s.append("span").attr("style",`width:11px;height:11px;border-radius:${it.shape==='bar'?'2px':'50%'};`
+        + `background:${it.color};display:inline-block;${it.shape==='bar'?'opacity:.45;':''}`);
+      s.append("span").text(it.label);
+    });
+  }
+
+  const presentTypes = Array.from(new Set(events.map(e=>e.type)));
+  const typeOrder = ["agent_spawn","agent_message","message_send","message_read","task_create","task_update","agent_complete"];
+  presentTypes.sort((a,b)=> typeOrder.indexOf(a) - typeOrder.indexOf(b));
+  legendRow("Dots = events", presentTypes.map(t=>({color:typeColor[t]||"#999", label:typeLabel[t]||t})));
+
+  const presentRoles = Array.from(new Set(agents.map(a=>a.role)));
+  legendRow("Bars = agents", presentRoles.map(r=>({color:roleColor[r]||"#999", label:roleLabel[r]||r, shape:"bar"})));
+})();
+</script>

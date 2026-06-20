@@ -1,0 +1,2 @@
+{"parentUuid":null,"isSidechain":true,"agentId":"w2","message":{"role":"user","content":"Search angle A."},"uuid":"00000000-0000-0000-0000-0000000000b1","timestamp":"2026-06-19T17:00:15.000Z","type":"user"}
+{"parentUuid":null,"isSidechain":true,"agentId":"w2","message":{"role":"assistant","content":[{"type":"text","text":"Found 5 sources for angle A"}],"usage":{"input_tokens":200,"output_tokens":80}},"uuid":"00000000-0000-0000-0000-0000000000b2","timestamp":"2026-06-19T17:00:20.000Z","type":"assistant"}

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Anatomy — {{ view.mode_title }}</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<!-- Markdown rendering + syntax highlighting for the agent-output drawer -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+  :root {
+    --lead: #d32f2f; --root: #455a64; --teammate: #1976d2;
+    --subagent: #388e3c; --phase: #f59e0b; --unknown: #9e9e9e;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         margin: 0; color: #1a1a1a; background: #fafafa; line-height: 1.5; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  h2 { margin: 36px 0 12px; font-size: 19px; border-bottom: 2px solid #eee; padding-bottom: 6px; }
+  .mode-badge { display: inline-block; padding: 3px 12px; border-radius: 14px; color: #fff;
+                font-weight: 600; font-size: 13px; background: #555; }
+  .primer { background: #fff; border-left: 4px solid #1976d2; padding: 12px 16px;
+            border-radius: 4px; margin: 14px 0; }
+  .signals { font-size: 13px; color: #555; }
+  .signals li { margin: 2px 0; }
+  .cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+  .card { background: #fff; border: 1px solid #e6e6e6; border-radius: 8px; padding: 10px 16px;
+          min-width: 92px; text-align: center; }
+  .card .n { font-size: 24px; font-weight: 700; }
+  .card .l { font-size: 12px; color: #777; text-transform: uppercase; letter-spacing: .04em; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; margin: 8px 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  table { border-collapse: collapse; width: 100%; background: #fff; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #eee; }
+  th { background: #f4f4f4; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; color: #fff; font-size: 11px; font-weight: 600; }
+  .panel { background: #fff; border: 1px solid #e6e6e6; border-radius: 8px; padding: 8px; }
+  .task { background: #fff; border: 1px solid #e6e6e6; border-radius: 8px; padding: 10px 14px; margin: 8px 0; }
+  .task .subj { font-weight: 600; }
+  .task .meta { font-size: 12px; color: #666; margin: 2px 0 6px; }
+  .path { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .status { padding: 1px 7px; border-radius: 8px; font-size: 11px; }
+  .s-pending { background: #eee; } .s-in_progress { background: #FFE0B2; }
+  .s-completed { background: #C8E6C9; } .s-deleted { background: #FFCDD2; }
+  .anomaly { color: #c62828; font-size: 13px; }
+  .msg { font-size: 13px; padding: 4px 0; border-bottom: 1px dotted #eee; }
+  .msg .t { font-family: ui-monospace, Menlo, monospace; color: #999; }
+  .agent-label { font-size: 11px; font-weight: 600; }
+  .lane-band { opacity: 0.06; }
+  .tooltip { position: absolute; background: #222; color: #fff; padding: 6px 10px;
+             border-radius: 4px; font-size: 12px; pointer-events: none; opacity: 0;
+             transition: opacity .15s; max-width: 360px; line-height: 1.4; z-index: 10; }
+  .node-label { font-size: 11px; }
+  .hint { color: #888; font-size: 12px; margin-top: -6px; }
+  .clickable { cursor: pointer; }
+  tbody tr.clickable:hover { background: #f0f6ff; }
+  .drawer { position: fixed; top: 0; right: 0; width: min(620px, 94vw); height: 100%;
+            background: #fff; box-shadow: -2px 0 18px rgba(0,0,0,.22); transform: translateX(100%);
+            transition: transform .2s ease; overflow-y: auto; overscroll-behavior: contain;
+            z-index: 30; padding: 18px 22px; }
+  .end-marker { text-align: center; color: #aaa; font-size: 12px; letter-spacing: .12em;
+                text-transform: uppercase; padding: 22px 0 6px; margin-top: 12px;
+                border-top: 1px solid #eee; }
+  .drawer.open { transform: translateX(0); }
+  .drawer h3 { margin: 0 28px 2px 0; font-size: 17px; }
+  .drawer .close { position: absolute; top: 10px; right: 14px; cursor: pointer;
+                   font-size: 24px; line-height: 1; border: none; background: none; color: #666; }
+  .drawer .dmeta { color: #666; font-size: 12px; margin-bottom: 12px; }
+  .turn { border-top: 1px solid #e3e3e3; padding: 12px 0 12px 12px; border-left: 3px solid transparent; }
+  .turn.user-turn { background: #faf4fe; border-left-color: #7b1fa2; }
+  .turn.assistant-turn { border-left-color: #cfd8dc; }
+  .turn.injected-turn { background: #fff8e1; border-left-color: #f59e0b; }
+  .turn .h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .role-badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+                padding: 2px 9px; border-radius: 4px; color: #fff; }
+  .role-badge.user { background: #7b1fa2; }
+  .role-badge.assistant { background: #1976d2; }
+  .role-badge.injected { background: #f59e0b; }
+  .role-badge.other { background: #757575; }
+  .turn .ts { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; font-weight: 600; color: #444; }
+  .turn > pre { white-space: pre-wrap; word-break: break-word; font: 13px/1.55 -apple-system, sans-serif; margin: 0; }
+  /* rendered Markdown */
+  .md { font: 14px/1.6 -apple-system, sans-serif; }
+  .md h1, .md h2, .md h3, .md h4 { margin: 12px 0 6px; line-height: 1.25; }
+  .md h1 { font-size: 18px; } .md h2 { font-size: 16px; } .md h3 { font-size: 14px; }
+  .md p { margin: 6px 0; }
+  .md ul, .md ol { margin: 6px 0; padding-left: 22px; }
+  .md a { color: #1976d2; }
+  .md blockquote { border-left: 3px solid #ddd; margin: 6px 0; padding-left: 10px; color: #666; }
+  .md pre { background: #f6f8fa; padding: 10px 12px; border-radius: 6px; overflow: auto; margin: 8px 0; }
+  .md code { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+  .md :not(pre) > code { background: #eef0f2; padding: 1px 5px; border-radius: 4px; }
+  .md table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+  .md th, .md td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+  .md th { background: #f4f4f4; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Session Anatomy</h1>
+  <p><span class="mode-badge" id="modeBadge">{{ view.mode_title }}</span></p>
+
+  <div class="cards">
+    <div class="card"><div class="n">{{ view.counts.agents }}</div><div class="l">agents</div></div>
+    {% if view.phases %}
+    <div class="card"><div class="n">{{ view.phases|length }}</div><div class="l">phases</div></div>
+    <div class="card"><div class="n">{{ "{:,}".format(view.workflow.total_tokens) }}</div><div class="l">tokens</div></div>
+    {% else %}
+    <div class="card"><div class="n">{{ view.counts.spawns }}</div><div class="l">spawns</div></div>
+    <div class="card"><div class="n">{{ view.counts.messages }}</div><div class="l">messages</div></div>
+    <div class="card"><div class="n">{{ view.counts.tasks }}</div><div class="l">tasks</div></div>
+    {% endif %}
+    <div class="card"><div class="n">{{ view.duration_s|humantime }}</div><div class="l">duration</div></div>
+  </div>
+
+  <div class="primer">{{ view.mode_primer }}</div>
+  {% if view.mode_signals %}
+  <div class="signals"><strong>Detected from:</strong>
+    <ul>{% for s in view.mode_signals %}<li>{{ s }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <div class="legend">
+    <span><i class="swatch" style="background:var(--lead)"></i>lead</span>
+    <span><i class="swatch" style="background:var(--root)"></i>root / main</span>
+    {% if view.phases %}<span><i class="swatch" style="background:var(--phase)"></i>phase</span>{% endif %}
+    <span><i class="swatch" style="background:var(--teammate)"></i>teammate</span>
+    <span><i class="swatch" style="background:var(--subagent)"></i>subagent</span>
+  </div>
+
+  {% if view.phases %}
+  <h2>Phases ({{ view.phases|length }})</h2>
+  <p class="hint">
+    {% if view.workflow.name %}Workflow <code>{{ view.workflow.name }}</code>{% endif %}
+    {% if view.workflow.status %} · {{ view.workflow.status }}{% endif %}
+    {% if view.workflow.model %} · <code>{{ view.workflow.model }}</code>{% endif %}
+    — the orchestrator fans out one-shot agents in ordered phases; each phase feeds the next.
+  </p>
+  <table>
+    <thead><tr><th>#</th><th>Phase</th><th>Agents</th><th>Tokens</th><th>Tool calls</th><th>Duration</th></tr></thead>
+    <tbody>
+    {% for ph in view.phases %}
+      <tr>
+        <td>{{ ph.index }}</td>
+        <td><span class="pill" style="background:var(--phase);color:#222">{{ ph.title }}</span></td>
+        <td>{{ ph.agents }}</td>
+        <td>{{ "{:,}".format(ph.tokens) }}</td>
+        <td>{{ ph.tool_calls }}</td>
+        <td>{{ ph.duration_s|humantime }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h2>Collaboration graph</h2>
+  <p class="hint">Solid green = spawn (delegation). Dashed blue = messages. Drag nodes; hover for detail.</p>
+  <div class="panel"><div id="graph"></div></div>
+
+  <h2>Timeline</h2>
+  <div id="timeline-legend"></div>
+  <div class="panel"><div id="timeline"></div></div>
+
+  <h2>Cast — who is who</h2>
+  <p class="hint">Click any agent — a graph node, a timeline lane, or a table row — to read its complete output.</p>
+  <table>
+    <thead><tr><th>Agent</th><th>Role</th><th>Type</th><th>Spawned by</th><th>Events</th><th>Tokens in/out</th></tr></thead>
+    <tbody>
+    {% for a in view.agents %}
+      <tr class="clickable" onclick="openAgent('{{ a.id }}')">
+        <td>{{ a.label }}</td>
+        <td><span class="pill" style="background:var(--{{ a.role }})">{{ a.role }}</span></td>
+        <td>{{ a.agent_type or "—" }}</td>
+        <td>{{ a.spawned_by_label or "—" }}</td>
+        <td>{{ a.events }}</td>
+        <td>{{ "{:,}".format(a.tokens_in) }} / {{ "{:,}".format(a.tokens_out) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if view.tasks %}
+  <h2>Shared task board ({{ view.tasks|length }} team tasks)</h2>
+  {% for t in view.tasks %}
+    <div class="task">
+      <div class="subj">#{{ t.id }} {{ t.subject or "(no subject)" }}</div>
+      <div class="meta">
+        {% if t.created_by %}created by {{ t.created_by }} · {% endif %}
+        {% if t.owner %}owner: <strong>{{ t.owner }}</strong>{% else %}unclaimed{% endif %}
+      </div>
+      <div class="path">
+        {% for tr in t.transitions %}<span class="status s-{{ tr.status }}">{{ tr.status }}</span> <small>({{ tr.actor }}, +{{ tr.offset_s|humantime }})</small>{% if not loop.last %} → {% endif %}{% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+  {% if view.anomalies %}
+    <p class="anomaly"><strong>⚠ Anomalies:</strong></p>
+    <ul class="anomaly">{% for a in view.anomalies %}<li>{{ a }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% endif %}
+
+  {% if view.private_todos %}
+  <h2>Private to-do lists</h2>
+  <p class="hint">Each agent keeps its own list (ids restart at 1 per agent), so these are rolled up, not merged.</p>
+  <table>
+    <thead><tr><th>Agent</th><th>Todos</th><th>Completed</th><th>In progress</th><th>Other</th></tr></thead>
+    <tbody>
+    {% for g in view.private_todos %}
+      <tr><td>{{ g.owner }}</td><td>{{ g.total }}</td><td>{{ g.completed }}</td><td>{{ g.in_progress }}</td><td>{{ g.other }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if view.messages %}
+  <h2>Communication log ({{ view.messages|length }} messages)</h2>
+  <div class="panel">
+  {% for m in view.messages %}
+    <div class="msg"><span class="t">+{{ m.offset_s|humantime }}</span>
+      <strong>{{ m.from }} → {{ m.to }}</strong>
+      <span class="pill" style="background:#777">{{ m.type }}</span>
+      {{ m.summary[:200] }}{% if m.summary|length > 200 %}…{% endif %}
+    </div>
+  {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+<div class="drawer" id="drawer">
+  <button class="close" onclick="closeDrawer()" aria-label="close">&times;</button>
+  <h3 id="drawerTitle"></h3>
+  <div class="dmeta" id="drawerMeta"></div>
+  <div id="drawerBody"></div>
+</div>
+<script>
+const roleColor = { lead:"#d32f2f", root:"#455a64", phase:"#f59e0b", teammate:"#1976d2", subagent:"#388e3c", unknown:"#9e9e9e" };
+
+// ---- Full-output drawer ----
+const agentOutputs = {{ outputs|tojson }};
+const outputsById = {};
+agentOutputs.forEach(o => { outputsById[o.id] = o; });
+function openAgent(id) {
+  const o = outputsById[id];
+  document.getElementById("drawerTitle").textContent = o ? o.label : id;
+  const body = document.getElementById("drawerBody");
+  body.innerHTML = "";
+  if (!o) {
+    document.getElementById("drawerMeta").textContent = "No text output recorded for this agent.";
+  } else {
+    document.getElementById("drawerMeta").textContent =
+      o.role + " · " + o.messages.length + " messages · " + id;
+    o.messages.forEach(m => {
+      const roleClass = ["user", "assistant", "injected"].includes(m.role) ? m.role : "other";
+      const turn = document.createElement("div");
+      turn.className = "turn " + roleClass + "-turn";
+      const h = document.createElement("div"); h.className = "h";
+      const badge = document.createElement("span");
+      badge.className = "role-badge " + roleClass;
+      badge.textContent = m.role;
+      const ts = document.createElement("span"); ts.className = "ts";
+      ts.textContent = fmtOffset(m.offset_s);
+      h.appendChild(badge); h.appendChild(ts);
+      turn.appendChild(h);
+      turn.appendChild(renderMarkdown(m.text || ""));
+      body.appendChild(turn);
+    });
+  }
+  const end = document.createElement("div");
+  end.className = "end-marker";
+  end.textContent = "— end of output —";
+  body.appendChild(end);
+  const drawer = document.getElementById("drawer");
+  drawer.scrollTop = 0;  // each agent starts at the top
+  drawer.classList.add("open");
+}
+function closeDrawer() { document.getElementById("drawer").classList.remove("open"); }
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+
+// Seconds-from-start → human-readable offset, e.g. 1617 → "+27m 0s", 45 → "+45s".
+function fmtOffset(s) {
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (h) return `+${h}h ${m}m`;
+  if (m) return `+${m}m ${sec}s`;
+  return `+${sec}s`;
+}
+
+// Render Markdown → sanitized HTML with code syntax highlighting; fall back to
+// plain text if the CDN libraries didn't load.
+function renderMarkdown(text) {
+  if (window.marked && window.DOMPurify) {
+    const div = document.createElement("div");
+    div.className = "md";
+    div.innerHTML = DOMPurify.sanitize(marked.parse(text));
+    if (window.hljs) {
+      div.querySelectorAll("pre code").forEach(el => { try { hljs.highlightElement(el); } catch (e) {} });
+    }
+    return div;
+  }
+  const pre = document.createElement("pre");
+  pre.textContent = text;
+  return pre;
+}
+const typeColor = { agent_spawn:"#4CAF50", agent_complete:"#F44336", message_send:"#2196F3",
+                    message_read:"#03A9F4", task_create:"#FF9800", task_update:"#FFC107", agent_message:"#9E9E9E" };
+const tip = d3.select("#tooltip");
+function showTip(evt, html) { tip.style("opacity",1).style("left",(evt.pageX+12)+"px").style("top",(evt.pageY-10)+"px").html(html); }
+function hideTip() { tip.style("opacity",0); }
+function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ---- Force-directed collaboration graph ----
+(function () {
+  const data = {{ graph|tojson }};
+  if (!data.nodes.length) return;
+  const W = Math.min(window.innerWidth - 80, 1040), H = Math.max(320, data.nodes.length * 26);
+  const svg = d3.select("#graph").append("svg").attr("width", W).attr("height", H);
+  svg.append("defs").append("marker").attr("id","arrow").attr("viewBox","0 -5 10 10")
+    .attr("refX", 22).attr("refY", 0).attr("markerWidth", 6).attr("markerHeight", 6).attr("orient","auto")
+    .append("path").attr("d","M0,-5L10,0L0,5").attr("fill","#888");
+
+  const sim = d3.forceSimulation(data.nodes)
+    .force("link", d3.forceLink(data.links).id(d => d.id).distance(110))
+    .force("charge", d3.forceManyBody().strength(-340))
+    .force("center", d3.forceCenter(W/2, H/2))
+    .force("collide", d3.forceCollide(34));
+
+  const link = svg.append("g").selectAll("line").data(data.links).enter().append("line")
+    .attr("stroke", d => d.kind === "spawn" ? "#4CAF50" : "#2196F3")
+    .attr("stroke-width", d => d.kind === "spawn" ? 2 : 1.2)
+    .attr("stroke-dasharray", d => d.kind === "spawn" ? null : "4,3")
+    .attr("marker-end", d => d.kind === "spawn" ? "url(#arrow)" : null)
+    .on("mouseover", (e,d) => showTip(e, `<strong>${d.kind}</strong><br>${esc(d.label)}`))
+    .on("mouseout", hideTip);
+
+  const node = svg.append("g").selectAll("g").data(data.nodes).enter().append("g")
+    .call(d3.drag()
+      .on("start", (e,d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on("drag", (e,d) => { d.fx=e.x; d.fy=e.y; })
+      .on("end", (e,d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+  node.append("circle").attr("r", 11).style("cursor","pointer")
+    .attr("fill", d => roleColor[d.role] || "#999").attr("stroke","#fff").attr("stroke-width",1.5)
+    .on("mouseover", (e,d) => showTip(e, `<strong>${esc(d.label)}</strong><br>${d.role}${d.agent_type ? " · "+d.agent_type : ""}<br>${d.events} events · click to read output`))
+    .on("mouseout", hideTip)
+    .on("click", (e,d) => openAgent(d.id));
+  node.append("text").attr("class","node-label").attr("x", 15).attr("y", 4)
+    .text(d => d.label.length > 30 ? d.label.slice(0,29)+"…" : d.label);
+
+  sim.on("tick", () => {
+    link.attr("x1", d=>d.source.x).attr("y1", d=>d.source.y).attr("x2", d=>d.target.x).attr("y2", d=>d.target.y);
+    node.attr("transform", d => `translate(${d.x},${d.y})`);
+  });
+})();
+
+// ---- Timeline (activity bars + zoom) — see shared partial below ----
+window.TL = {
+  agents: {{ timeline.agents|tojson }},
+  events: {{ timeline.events|tojson }},
+  spawnLinks: {{ timeline.spawn_links|tojson }},
+  timeAnchors: {{ timeline.time_anchors|tojson }},
+};
+</script>
+{% include "_timeline.js.j2" %}
+</body>
+</html>

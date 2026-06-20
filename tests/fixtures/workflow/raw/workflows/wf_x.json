@@ -1,0 +1,21 @@
+{
+  "runId": "wf_x",
+  "workflowName": "deep-research",
+  "status": "completed",
+  "defaultModel": "claude-test",
+  "agentCount": 3,
+  "totalTokens": 760,
+  "totalToolCalls": 7,
+  "durationMs": 20000,
+  "phases": [
+    {"title": "Scope"},
+    {"title": "Search"}
+  ],
+  "workflowProgress": [
+    {"type": "workflow_phase", "index": 1, "title": "Scope"},
+    {"type": "workflow_phase", "index": 2, "title": "Search"},
+    {"type": "workflow_agent", "index": 1, "label": "scope", "phaseIndex": 1, "phaseTitle": "Scope", "agentId": "w1", "tokens": 150, "toolCalls": 1, "durationMs": 5000, "state": "done"},
+    {"type": "workflow_agent", "index": 2, "label": "search:A", "phaseIndex": 2, "phaseTitle": "Search", "agentId": "w2", "tokens": 280, "toolCalls": 3, "durationMs": 7000, "state": "done"},
+    {"type": "workflow_agent", "index": 3, "label": "search:B", "phaseIndex": 2, "phaseTitle": "Search", "agentId": "w3", "tokens": 330, "toolCalls": 3, "durationMs": 8000, "state": "done"}
+  ]
+}
